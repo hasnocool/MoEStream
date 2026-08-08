@@ -2,7 +2,7 @@
 
 ## Objective
 
-MoEStream separates **model semantics** from **storage/runtime policy** so multiple sparse model families can share expert caching, prefetch, metrics, and API infrastructure.
+MoEStream separates **model semantics** from **storage/runtime policy** so multiple sparse model families can share expert indexing, caching, prefetch, metrics, and API infrastructure.
 
 ## Layers
 
@@ -24,7 +24,25 @@ A model adapter is authoritative for:
 
 Storage hints are advisory only. The adapter's authoritative route must decide which experts participate.
 
-### 3. Expert scheduler
+### 3. Expert manifest and index
+
+The manifest is the trust boundary between model conversion and runtime expert loading. It maps logical `(layer, expert)` identities onto explicit byte ranges in declared source files.
+
+The current schema validates before index construction:
+
+- schema version and model identity;
+- source files referenced by stable manifest keys;
+- paths that are relative to the configured model root and contain no traversal components;
+- non-zero declared source sizes;
+- optional SHA-256 metadata syntax;
+- unique `(layer, expert)` identities;
+- non-zero expert spans;
+- checked offset/length arithmetic;
+- spans bounded by each source file's declared size.
+
+The resulting `ExpertIndex` resolves an `ExpertId` to the existing `ExpertLocation` structure consumed by the cache. Filesystem size checks are asynchronous. Full SHA-256 content verification and automatic checkpoint-to-manifest generation remain future work.
+
+### 4. Expert scheduler
 
 The scheduler will combine:
 
@@ -38,7 +56,7 @@ The scheduler will combine:
 
 Authoritative expert loads already use bounded I/O concurrency. Predictive prefetch cancellation remains a separate scheduling milestone so speculative reads cannot accidentally affect correctness.
 
-### 4. Tiered cache
+### 5. Tiered cache
 
 ```text
 L0  accelerator memory    fastest / smallest
@@ -60,7 +78,7 @@ The current host cache implements:
 
 These primitives establish the baseline for later direct-I/O, io_uring, mmap, and accelerator-residency experiments. Alternative storage paths should be benchmarked against this baseline before adoption.
 
-### 5. Execution provider
+### 6. Execution provider
 
 Compute backends are intentionally separate from storage scheduling. Planned providers:
 
@@ -75,6 +93,7 @@ Compute backends are intentionally separate from storage scheduling. Planned pro
 - CPU-bound tensor work that cannot be asynchronous must execute in a dedicated compute pool/provider, not on Tokio worker threads.
 - Shared cache metadata must use bounded, thread-safe synchronization.
 - Physical expert reads must be limited by explicit concurrency controls.
+- Manifest and source-file filesystem checks must use asynchronous file APIs.
 - Prefetch tasks must be cancellable and bounded by semaphores/queue depth.
 - Duplicate misses for the same expert must coalesce into one in-flight physical load.
 - Authoritative cache hits may update recency metadata but must never change routing decisions.
@@ -82,6 +101,8 @@ Compute backends are intentionally separate from storage scheduling. Planned pro
 ## Correctness rule
 
 A predictor can say "expert 12 will probably be needed next." It may start reading expert 12. When the real router runs, only the router's result can select the expert. A wrong prefetch costs I/O; it must never alter model output.
+
+A manifest may say where expert 12 resides, but it must never decide that expert 12 participates in the token. Routing identity and storage location remain separate concerns.
 
 ## Metrics to capture
 

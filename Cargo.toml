@@ -1,6 +1,6 @@
 [package]
 name = "moestream"
-version = "0.2.0-alpha.1"
+version = "0.2.0-alpha.2"
 edition = "2024"
 rust-version = "1.85"
 description = "Experimental storage-aware Mixture-of-Experts inference runtime for consumer hardware"
