@@ -145,11 +145,9 @@ async fn build_bank(
             let mut tensor_offset = 0_u64;
             let mut tensors = Vec::with_capacity(3);
 
-            for (short_name, tensor) in [
-                ("gate_proj", &gate),
-                ("up_proj", &up),
-                ("down_proj", &down),
-            ] {
+            for (short_name, tensor) in
+                [("gate_proj", &gate), ("up_proj", &up), ("down_proj", &down)]
+            {
                 copy_tensor_span(&tensor.shard, tensor.span, &mut output)
                     .await
                     .with_context(|| format!("copy tensor {:?}", tensor.name))?;
@@ -208,15 +206,11 @@ async fn build_bank(
     };
     manifest.validate()?;
 
-    let manifest_json = serde_json::to_vec_pretty(&manifest).context("serialize expert manifest")?;
+    let manifest_json =
+        serde_json::to_vec_pretty(&manifest).context("serialize expert manifest")?;
     tokio::fs::write(partial_manifest_path, manifest_json)
         .await
-        .with_context(|| {
-            format!(
-                "write expert manifest {}",
-                partial_manifest_path.display()
-            )
-        })?;
+        .with_context(|| format!("write expert manifest {}", partial_manifest_path.display()))?;
 
     Ok(manifest)
 }
@@ -383,7 +377,10 @@ mod tests {
             names.gate_proj, names.up_proj, names.down_proj
         );
         let index = SafetensorsIndex::from_json(&index_json).expect("index");
-        let inventory = index.inventory(source_root.path()).await.expect("inventory");
+        let inventory = index
+            .inventory(source_root.path())
+            .await
+            .expect("inventory");
 
         let manifest = prepare_qwen3_expert_bank(
             &inventory,
@@ -433,7 +430,10 @@ mod tests {
             names.gate_proj, names.up_proj, names.down_proj
         );
         let index = SafetensorsIndex::from_json(&index_json).expect("index");
-        let inventory = index.inventory(source_root.path()).await.expect("inventory");
+        let inventory = index
+            .inventory(source_root.path())
+            .await
+            .expect("inventory");
 
         let error = prepare_qwen3_expert_bank(
             &inventory,
