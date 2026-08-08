@@ -4,7 +4,7 @@
 
 The project is inspired by the architectural lessons of projects such as Deltafin, WASTE, llama.cpp, and other storage-aware local inference experiments, while aiming for a **model-adapter architecture rather than a single-model runtime**.
 
-> Status: **0.1.1 / storage-aware runtime foundation.** This repository does not yet execute a production LLM.
+> Status: **0.2.0-alpha.1 / first Qwen3 MoE adapter primitives.** This repository does not yet execute a production LLM.
 
 ## Goal
 
@@ -97,15 +97,21 @@ The Rust runtime foundation contains:
 - LRU host-RAM expert eviction;
 - runtime cache metrics for hits, misses, coalescing, evictions, and physical bytes read;
 - tests for range validation, concurrent access, and LRU behavior;
+- Qwen3 MoE config parsing and structural validation;
+- a correctness-oriented Qwen3 softmax/top-k routing fixture helper;
 - an OpenAI-compatible API skeleton;
 - `/health` and `/v1/models` endpoints;
 - CI and project governance documentation.
 
 The current cache deliberately uses ordinary asynchronous file seek/read operations. Direct I/O, io_uring-specific paths, mmap experiments, prefetch cancellation, and accelerator residency should only be added when benchmarks demonstrate that they improve the intended hardware targets.
 
+The Qwen3 routing helper operates on already-computed router logits. It is not yet the authoritative tensor-level router; router weight decoding, exact reference parity, tokenizer support, and expert execution remain part of the 0.2 milestone.
+
 ## First model target
 
 The first real adapter target is **Qwen3-30B-A3B**. It has 30.5B total parameters with roughly 3.3B activated, 128 experts, and 8 experts selected per token, making it a practical first test of NVMe-backed expert streaming on consumer hardware.
+
+Newer Qwen3.5/Qwen3.6 MoE families exist, but their hybrid attention/DeltaNet and shared-expert/multimodal architecture adds unnecessary complexity to the first parity bring-up. They remain later compatibility targets.
 
 See [`docs/FIRST-MODEL-TARGET.md`](docs/FIRST-MODEL-TARGET.md) for the selection rationale, implementation phases, reference-comparison plan, and benchmark matrix.
 
