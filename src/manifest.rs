@@ -2,15 +2,19 @@
 
 use std::{
     collections::HashMap,
+    fs::File,
+    io::Read,
     path::{Component, Path, PathBuf},
 };
 
 use anyhow::{Context, ensure};
 use serde::{Deserialize, Serialize};
+use sha2::{Digest, Sha256};
 
 use crate::model::{ExpertId, ExpertLocation};
 
 pub const MANIFEST_SCHEMA_VERSION: u32 = 1;
+const HASH_BUFFER_BYTES: usize = 1024 * 1024;
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub struct ExpertManifest {
@@ -211,11 +215,59 @@ impl ExpertIndex {
         Ok(())
     }
 
+    /// Verify every source that declares a SHA-256 digest.
+    ///
+    /// Reading and hashing large model files is intentionally isolated on
+    /// Tokio's blocking pool so request/runtime worker threads never perform
+    /// synchronous disk I/O or sustained CPU hashing work.
+    pub async fn verify_declared_hashes(&self) -> anyhow::Result<usize> {
+        self.verify_file_sizes().await?;
+
+        let mut verified = 0_usize;
+        for (name, file) in &self.files {
+            let Some(expected) = file.sha256.clone() else {
+                continue;
+            };
+
+            let path = file.path.clone();
+            let source_name = name.clone();
+            let actual = tokio::task::spawn_blocking(move || hash_file_sha256(&path))
+                .await
+                .with_context(|| format!("join SHA-256 task for manifest file {source_name:?}"))??;
+
+            ensure!(
+                actual.eq_ignore_ascii_case(&expected),
+                "manifest source {name:?} SHA-256 mismatch: expected {expected}, found {actual}"
+            );
+            verified += 1;
+        }
+
+        Ok(verified)
+    }
+
     pub fn declared_sha256(&self, file_name: &str) -> Option<&str> {
         self.files
             .get(file_name)
             .and_then(|file| file.sha256.as_deref())
     }
+}
+
+fn hash_file_sha256(path: &Path) -> anyhow::Result<String> {
+    let mut file = File::open(path).with_context(|| format!("open {} for SHA-256", path.display()))?;
+    let mut hasher = Sha256::new();
+    let mut buffer = vec![0_u8; HASH_BUFFER_BYTES];
+
+    loop {
+        let read = file
+            .read(&mut buffer)
+            .with_context(|| format!("read {} for SHA-256", path.display()))?;
+        if read == 0 {
+            break;
+        }
+        hasher.update(&buffer[..read]);
+    }
+
+    Ok(format!("{:x}", hasher.finalize()))
 }
 
 fn validate_relative_path(path: &Path) -> anyhow::Result<()> {
@@ -255,6 +307,9 @@ mod tests {
     use super::{ExpertManifest, MANIFEST_SCHEMA_VERSION};
     use crate::model::ExpertId;
 
+    const TEST_BYTES: &[u8; 16] = b"0123456789abcdef";
+    const TEST_SHA256: &str = "9f9f5111f7b27a781f1f1ddde5ebc2dd2b796bfc7365c9c28b548e564176929f";
+
     fn valid_manifest_json() -> String {
         format!(
             r#"{{
@@ -264,7 +319,7 @@ mod tests {
                 "experts-0": {{
                   "path": "experts/experts-0.bin",
                   "size": 16,
-                  "sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+                  "sha256": "{TEST_SHA256}"
                 }}
               }},
               "experts": [
@@ -273,6 +328,16 @@ mod tests {
               ]
             }}"#
         )
+    }
+
+    async fn write_test_bank(root: &Path) {
+        let experts_dir = root.join("experts");
+        tokio::fs::create_dir_all(&experts_dir)
+            .await
+            .expect("create expert directory");
+        tokio::fs::write(experts_dir.join("experts-0.bin"), TEST_BYTES)
+            .await
+            .expect("write expert bank");
     }
 
     #[test]
@@ -329,13 +394,7 @@ mod tests {
     #[tokio::test]
     async fn verifies_declared_file_sizes_without_blocking_executor() {
         let root = tempdir().expect("temporary model root");
-        let experts_dir = root.path().join("experts");
-        tokio::fs::create_dir_all(&experts_dir)
-            .await
-            .expect("create expert directory");
-        tokio::fs::write(experts_dir.join("experts-0.bin"), [0_u8; 16])
-            .await
-            .expect("write expert bank");
+        write_test_bank(root.path()).await;
 
         let manifest = ExpertManifest::from_json(&valid_manifest_json()).expect("valid manifest");
         let index = manifest.build_index(root.path()).expect("build index");
@@ -343,5 +402,39 @@ mod tests {
             .verify_file_sizes()
             .await
             .expect("file-size verification");
+    }
+
+    #[tokio::test]
+    async fn verifies_declared_sha256_off_executor_threads() {
+        let root = tempdir().expect("temporary model root");
+        write_test_bank(root.path()).await;
+
+        let manifest = ExpertManifest::from_json(&valid_manifest_json()).expect("valid manifest");
+        let index = manifest.build_index(root.path()).expect("build index");
+        let verified = index
+            .verify_declared_hashes()
+            .await
+            .expect("SHA-256 verification");
+        assert_eq!(verified, 1);
+    }
+
+    #[tokio::test]
+    async fn rejects_corrupted_source_hash() {
+        let root = tempdir().expect("temporary model root");
+        write_test_bank(root.path()).await;
+        tokio::fs::write(
+            root.path().join("experts/experts-0.bin"),
+            b"fedcba9876543210",
+        )
+        .await
+        .expect("corrupt expert bank");
+
+        let manifest = ExpertManifest::from_json(&valid_manifest_json()).expect("valid manifest");
+        let index = manifest.build_index(root.path()).expect("build index");
+        let error = index
+            .verify_declared_hashes()
+            .await
+            .expect_err("corrupt source must fail verification");
+        assert!(error.to_string().contains("SHA-256 mismatch"));
     }
 }
