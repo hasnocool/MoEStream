@@ -104,8 +104,8 @@ async fn sha256_file(path: &Path) -> anyhow::Result<String> {
 }
 
 fn hash_file_sha256(path: &Path) -> anyhow::Result<String> {
-    let mut file = File::open(path)
-        .with_context(|| format!("open packed expert bank {}", path.display()))?;
+    let mut file =
+        File::open(path).with_context(|| format!("open packed expert bank {}", path.display()))?;
     let mut hasher = Sha256::new();
     let mut buffer = vec![0_u8; HASH_BUFFER_BYTES];
 
@@ -167,9 +167,7 @@ mod tests {
         }
     }
 
-    async fn inventory(
-        root: &std::path::Path,
-    ) -> crate::checkpoint::CheckpointInventory {
+    async fn inventory(root: &std::path::Path) -> crate::checkpoint::CheckpointInventory {
         let names = ["gate_proj", "up_proj", "down_proj"];
         let mut entries = Vec::new();
         let mut weight_map = serde_json::Map::new();
@@ -205,14 +203,16 @@ mod tests {
             .write_all(&(header.len() as u64).to_le_bytes())
             .await
             .expect("write header length");
-        shard.write_all(header.as_bytes()).await.expect("write header");
+        shard
+            .write_all(header.as_bytes())
+            .await
+            .expect("write header");
         shard.write_all(&payload).await.expect("write payload");
         shard.flush().await.expect("flush shard");
 
-        let index = SafetensorsIndex::from_json(
-            &serde_json::json!({"weight_map": weight_map}).to_string(),
-        )
-        .expect("index");
+        let index =
+            SafetensorsIndex::from_json(&serde_json::json!({"weight_map": weight_map}).to_string())
+                .expect("index");
         index.inventory(root).await.expect("inventory")
     }
 
@@ -222,14 +222,10 @@ mod tests {
         let output = tempdir().expect("output");
         let inventory = inventory(source.path()).await;
 
-        let packed = pack_expert_bank_verified(
-            &inventory,
-            &config(),
-            "Qwen/Qwen3-test",
-            output.path(),
-        )
-        .await
-        .expect("verified pack");
+        let packed =
+            pack_expert_bank_verified(&inventory, &config(), "Qwen/Qwen3-test", output.path())
+                .await
+                .expect("verified pack");
 
         let digest = packed.manifest.files["experts"]
             .sha256
@@ -241,8 +237,8 @@ mod tests {
         let manifest_json = tokio::fs::read_to_string(&packed.manifest_path)
             .await
             .expect("manifest");
-        let on_disk = crate::manifest::ExpertManifest::from_json(&manifest_json)
-            .expect("manifest parses");
+        let on_disk =
+            crate::manifest::ExpertManifest::from_json(&manifest_json).expect("manifest parses");
         assert_eq!(on_disk.files["experts"].sha256.as_deref(), Some(digest));
         assert_eq!(
             on_disk
@@ -267,14 +263,9 @@ mod tests {
             .await
             .expect("stale manifest temp");
 
-        pack_expert_bank_verified(
-            &inventory,
-            &config(),
-            "Qwen/Qwen3-test",
-            output.path(),
-        )
-        .await
-        .expect("verified pack");
+        pack_expert_bank_verified(&inventory, &config(), "Qwen/Qwen3-test", output.path())
+            .await
+            .expect("verified pack");
 
         assert!(
             !tokio::fs::try_exists(output.path().join("experts.bin.tmp"))
