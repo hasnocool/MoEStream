@@ -39,12 +39,24 @@ pub struct ManifestExpert {
     pub file: String,
     pub offset: u64,
     pub length: u64,
+    #[serde(default)]
+    pub tensors: Vec<ManifestTensor>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct ManifestTensor {
+    pub name: String,
+    pub offset: u64,
+    pub length: u64,
+    pub dtype: String,
+    pub shape: Vec<u64>,
 }
 
 #[derive(Debug, Clone)]
 pub struct ExpertIndex {
     model: String,
     entries: HashMap<ExpertId, ExpertLocation>,
+    metadata: HashMap<ExpertId, ManifestExpert>,
     files: HashMap<String, IndexedFile>,
 }
 
@@ -115,6 +127,7 @@ impl ExpertManifest {
                 end,
                 file.size
             );
+            validate_tensor_layout(expert)?;
 
             let id = ExpertId {
                 layer: expert.layer,
@@ -150,6 +163,7 @@ impl ExpertManifest {
             .collect::<HashMap<_, _>>();
 
         let mut entries = HashMap::with_capacity(self.experts.len());
+        let mut metadata = HashMap::with_capacity(self.experts.len());
         for expert in &self.experts {
             let file = files
                 .get(&expert.file)
@@ -159,18 +173,20 @@ impl ExpertManifest {
                 expert: expert.expert,
             };
             entries.insert(
-                id,
+                id.clone(),
                 ExpertLocation {
                     path: file.path.clone(),
                     offset: expert.offset,
                     length: expert.length,
                 },
             );
+            metadata.insert(id, expert.clone());
         }
 
         Ok(ExpertIndex {
             model: self.model.clone(),
             entries,
+            metadata,
             files,
         })
     }
@@ -194,6 +210,12 @@ impl ExpertIndex {
             .get(id)
             .cloned()
             .with_context(|| format!("missing expert layer {} expert {}", id.layer, id.expert))
+    }
+
+    pub fn expert_metadata(&self, id: &ExpertId) -> anyhow::Result<&ManifestExpert> {
+        self.metadata
+            .get(id)
+            .with_context(|| format!("missing expert metadata layer {} expert {}", id.layer, id.expert))
     }
 
     pub async fn verify_file_sizes(&self) -> anyhow::Result<()> {
@@ -252,6 +274,55 @@ impl ExpertIndex {
             .get(file_name)
             .and_then(|file| file.sha256.as_deref())
     }
+}
+
+fn validate_tensor_layout(expert: &ManifestExpert) -> anyhow::Result<()> {
+    if expert.tensors.is_empty() {
+        return Ok(());
+    }
+
+    let mut names = HashMap::with_capacity(expert.tensors.len());
+    let mut spans = Vec::with_capacity(expert.tensors.len());
+    for tensor in &expert.tensors {
+        ensure!(!tensor.name.trim().is_empty(), "tensor name cannot be empty");
+        ensure!(!tensor.dtype.trim().is_empty(), "tensor dtype cannot be empty");
+        ensure!(tensor.length > 0, "tensor length must be non-zero");
+        ensure!(
+            names.insert(tensor.name.as_str(), ()).is_none(),
+            "duplicate tensor metadata {:?}",
+            tensor.name
+        );
+        let end = tensor
+            .offset
+            .checked_add(tensor.length)
+            .context("tensor byte range overflow")?;
+        ensure!(
+            end <= expert.length,
+            "tensor {:?} range {}..{} exceeds expert length {}",
+            tensor.name,
+            tensor.offset,
+            end,
+            expert.length
+        );
+        spans.push((tensor.offset, end, tensor.name.as_str()));
+    }
+
+    spans.sort_unstable_by_key(|(start, end, name)| (*start, *end, *name));
+    let mut cursor = 0_u64;
+    for (start, end, name) in spans {
+        ensure!(
+            start == cursor,
+            "tensor {name:?} begins at {start}, expected contiguous expert offset {cursor}"
+        );
+        cursor = end;
+    }
+    ensure!(
+        cursor == expert.length,
+        "expert tensor metadata covers {cursor} bytes, expected {}",
+        expert.length
+    );
+
+    Ok(())
 }
 
 fn hash_file_sha256(path: &Path) -> anyhow::Result<String> {
@@ -352,18 +423,37 @@ mod tests {
 
         assert_eq!(index.model(), "Qwen/Qwen3-30B-A3B");
         assert_eq!(index.len(), 2);
-        let location = index
-            .location(&ExpertId {
-                layer: 0,
-                expert: 1,
-            })
-            .expect("expert location");
+        let id = ExpertId {
+            layer: 0,
+            expert: 1,
+        };
+        let location = index.location(&id).expect("expert location");
         assert_eq!(
             location.path,
             Path::new("/models/qwen3/experts/experts-0.bin")
         );
         assert_eq!(location.offset, 4);
         assert_eq!(location.length, 4);
+        assert!(index.expert_metadata(&id).expect("metadata").tensors.is_empty());
+    }
+
+    #[test]
+    fn validates_contiguous_tensor_subranges() {
+        let json = valid_manifest_json().replace(
+            "\"offset\": 0, \"length\": 4}",
+            "\"offset\": 0, \"length\": 4, \"tensors\":[{\"name\":\"gate_proj\",\"offset\":0,\"length\":2,\"dtype\":\"F16\",\"shape\":[1]},{\"name\":\"up_proj\",\"offset\":2,\"length\":2,\"dtype\":\"F16\",\"shape\":[1]}]}",
+        );
+        ExpertManifest::from_json(&json).expect("valid tensor subranges");
+    }
+
+    #[test]
+    fn rejects_tensor_layout_holes() {
+        let json = valid_manifest_json().replace(
+            "\"offset\": 0, \"length\": 4}",
+            "\"offset\": 0, \"length\": 4, \"tensors\":[{\"name\":\"gate_proj\",\"offset\":0,\"length\":2,\"dtype\":\"F16\",\"shape\":[1]},{\"name\":\"up_proj\",\"offset\":3,\"length\":1,\"dtype\":\"F16\",\"shape\":[1]}]}",
+        );
+        let error = ExpertManifest::from_json(&json).expect_err("tensor hole must fail");
+        assert!(error.to_string().contains("expected contiguous expert offset"));
     }
 
     #[test]
