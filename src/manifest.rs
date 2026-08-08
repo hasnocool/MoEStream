@@ -213,9 +213,12 @@ impl ExpertIndex {
     }
 
     pub fn expert_metadata(&self, id: &ExpertId) -> anyhow::Result<&ManifestExpert> {
-        self.metadata
-            .get(id)
-            .with_context(|| format!("missing expert metadata layer {} expert {}", id.layer, id.expert))
+        self.metadata.get(id).with_context(|| {
+            format!(
+                "missing expert metadata layer {} expert {}",
+                id.layer, id.expert
+            )
+        })
     }
 
     pub async fn verify_file_sizes(&self) -> anyhow::Result<()> {
@@ -238,10 +241,6 @@ impl ExpertIndex {
     }
 
     /// Verify every source that declares a SHA-256 digest.
-    ///
-    /// Reading and hashing large model files is intentionally isolated on
-    /// Tokio's blocking pool so request/runtime worker threads never perform
-    /// synchronous disk I/O or sustained CPU hashing work.
     pub async fn verify_declared_hashes(&self) -> anyhow::Result<usize> {
         self.verify_file_sizes().await?;
 
@@ -251,14 +250,9 @@ impl ExpertIndex {
                 continue;
             };
 
-            let path = file.path.clone();
-            let source_name = name.clone();
-            let actual = tokio::task::spawn_blocking(move || hash_file_sha256(&path))
+            let actual = sha256_file(&file.path)
                 .await
-                .with_context(|| {
-                    format!("join SHA-256 task for manifest file {source_name:?}")
-                })??;
-
+                .with_context(|| format!("hash manifest file {name:?}"))?;
             ensure!(
                 actual.eq_ignore_ascii_case(&expected),
                 "manifest source {name:?} SHA-256 mismatch: expected {expected}, found {actual}"
@@ -274,6 +268,15 @@ impl ExpertIndex {
             .get(file_name)
             .and_then(|file| file.sha256.as_deref())
     }
+}
+
+/// Hash a file without performing synchronous reads or sustained hashing work
+/// on Tokio runtime worker threads.
+pub async fn sha256_file(path: &Path) -> anyhow::Result<String> {
+    let path = path.to_path_buf();
+    tokio::task::spawn_blocking(move || hash_file_sha256(&path))
+        .await
+        .context("join SHA-256 task")?
 }
 
 fn validate_tensor_layout(expert: &ManifestExpert) -> anyhow::Result<()> {
@@ -434,7 +437,13 @@ mod tests {
         );
         assert_eq!(location.offset, 4);
         assert_eq!(location.length, 4);
-        assert!(index.expert_metadata(&id).expect("metadata").tensors.is_empty());
+        assert!(
+            index
+                .expert_metadata(&id)
+                .expect("metadata")
+                .tensors
+                .is_empty()
+        );
     }
 
     #[test]
@@ -453,7 +462,11 @@ mod tests {
             "\"offset\": 0, \"length\": 4, \"tensors\":[{\"name\":\"gate_proj\",\"offset\":0,\"length\":2,\"dtype\":\"F16\",\"shape\":[1]},{\"name\":\"up_proj\",\"offset\":3,\"length\":1,\"dtype\":\"F16\",\"shape\":[1]}]}",
         );
         let error = ExpertManifest::from_json(&json).expect_err("tensor hole must fail");
-        assert!(error.to_string().contains("expected contiguous expert offset"));
+        assert!(
+            error
+                .to_string()
+                .contains("expected contiguous expert offset")
+        );
     }
 
     #[test]
