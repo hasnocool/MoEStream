@@ -26,20 +26,22 @@ Storage hints are advisory only. The adapter's authoritative route must decide w
 
 ### 3. Checkpoint discovery and preparation
 
-MoEStream must inspect large upstream checkpoints without materializing tensor payloads just to discover their layout.
+MoEStream must inspect and prepare large upstream checkpoints without materializing complete shards or expert tensors in RAM.
 
 The safetensors metadata reader therefore:
 
 - reads the 8-byte little-endian JSON-header length asynchronously;
 - caps accepted header size before allocation;
-- reads only the JSON header, never tensor payload bytes;
+- reads only the JSON header, never tensor payload bytes during discovery;
 - records dtype, shape, and data-relative `[begin, end)` offsets;
 - converts data-relative offsets into checked absolute source-file spans;
 - rejects malformed JSON, reversed ranges, out-of-bounds tensors, holes, and trailing unindexed data.
 
-For Qwen3, one logical expert is represented upstream by separate `gate_proj`, `up_proj`, and `down_proj` tensors. The first checkpoint converter will repack those three spans into one contiguous MoEStream expert record. That keeps checkpoint conversion out of the token-generation hot path and preserves one logical expert read for the cache/scheduler.
+Sharded `model.safetensors.index.json` parsing validates safe relative shard paths, inspects referenced shard headers asynchronously, and cross-checks index entries against actual shard contents.
 
-Sharded `model.safetensors.index.json` parsing and the contiguous expert-record writer are the next checkpoint-preparation steps.
+For Qwen3, one logical expert is represented upstream by separate `gate_proj`, `up_proj`, and `down_proj` tensors. The converter validates those tensors and repacks their byte spans in deterministic layer-major/expert-major order into one contiguous MoEStream expert record. Source payload copying uses bounded 1 MiB asynchronous seek/read/write buffers, so neither entire shards nor complete expert banks are materialized in memory.
+
+The verified preparation wrapper then checks the generated bank's physical size against the manifest, computes SHA-256 with synchronous file reads and CPU hashing isolated through `tokio::task::spawn_blocking`, atomically replaces the manifest with its digest-bearing form, cleans stale converter temporary files before a run, and removes temporary/published output if integrity finalization fails.
 
 ### 4. Expert manifest and index
 
@@ -59,7 +61,9 @@ The current schema validates before index construction:
 
 The resulting `ExpertIndex` resolves an `ExpertId` to the existing `ExpertLocation` structure consumed by the cache. Filesystem type/size checks use asynchronous Tokio APIs.
 
-For sources with declared SHA-256 digests, `ExpertIndex::verify_declared_hashes()` performs full content verification. The method size-checks sources first, then isolates synchronous file reads and SHA-256 CPU work with `tokio::task::spawn_blocking`. Hashing uses a reusable 1 MiB buffer, so source files are streamed rather than loaded wholesale into RAM. Sources without a declared digest are intentionally skipped by content hashing.
+For sources with declared SHA-256 digests, `ExpertIndex::verify_declared_hashes()` performs full content verification. The method size-checks sources first, then isolates synchronous file reads and SHA-256 CPU work with `tokio::task::spawn_blocking`. Hashing uses a reusable 1 MiB buffer, so source files are streamed rather than loaded wholesale into RAM. Newly packed Qwen3 banks can now enter this same verification path immediately through the verified preparation wrapper.
+
+Projection-level subranges inside each packed expert record remain a follow-up schema extension so runtime tensor decoding can address `gate_proj`, `up_proj`, and `down_proj` directly without re-deriving boundaries.
 
 ### 5. Expert scheduler
 
@@ -110,6 +114,7 @@ Compute backends are intentionally separate from storage scheduling. Planned pro
 
 - Async request paths must not perform blocking disk or network operations.
 - Checkpoint metadata discovery must use asynchronous file I/O and must not read tensor payloads unnecessarily.
+- Checkpoint payload repacking must use bounded asynchronous range reads/writes rather than whole-tensor allocations.
 - CPU-bound tensor work that cannot be asynchronous must execute in a dedicated compute pool/provider, not on Tokio worker threads.
 - Shared cache metadata must use bounded, thread-safe synchronization.
 - Physical expert reads must be limited by explicit concurrency controls.
