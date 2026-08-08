@@ -49,9 +49,7 @@ fn config(fixture: &RouterFixture) -> Qwen3MoeConfig {
     }
 }
 
-async fn load_fixture_router(
-    fixture: &RouterFixture,
-) -> (tempfile::TempDir, Qwen3RouterWeights) {
+async fn load_fixture_router(fixture: &RouterFixture) -> (tempfile::TempDir, Qwen3RouterWeights) {
     let root = tempdir().expect("temporary checkpoint root");
     let tensor_name = "model.layers.0.mlp.gate.weight";
     let payload = fixture
@@ -78,7 +76,10 @@ async fn load_fixture_router(
         .write_all(header.as_bytes())
         .await
         .expect("write safetensors header");
-    shard.write_all(&payload).await.expect("write router payload");
+    shard
+        .write_all(&payload)
+        .await
+        .expect("write router payload");
     shard.flush().await.expect("flush shard");
 
     let index_json = serde_json::json!({
@@ -128,11 +129,7 @@ async fn matches_recorded_pytorch_bf16_router_fixture() {
 
     let logits = router.logits(&hidden).expect("router logits");
     assert_eq!(logits.len(), fixture.router_logits_f32.len());
-    for (index, (actual, expected)) in logits
-        .iter()
-        .zip(&fixture.router_logits_f32)
-        .enumerate()
-    {
+    for (index, (actual, expected)) in logits.iter().zip(&fixture.router_logits_f32).enumerate() {
         assert_close(*actual, *expected, 0.0, &format!("router logit {index}"));
     }
 
@@ -163,7 +160,12 @@ async fn matches_recorded_pytorch_bf16_router_fixture() {
         .zip(&fixture.topk_weights_pre_norm)
         .enumerate()
     {
-        assert_close(actual, *expected, 1e-6, &format!("pre-norm top-k weight {index}"));
+        assert_close(
+            actual,
+            *expected,
+            1e-6,
+            &format!("pre-norm top-k weight {index}"),
+        );
     }
     for (index, (actual, expected)) in normalized
         .iter()
@@ -171,6 +173,11 @@ async fn matches_recorded_pytorch_bf16_router_fixture() {
         .zip(&fixture.topk_weights_norm)
         .enumerate()
     {
-        assert_close(actual, *expected, 1e-6, &format!("normalized top-k weight {index}"));
+        assert_close(
+            actual,
+            *expected,
+            1e-6,
+            &format!("normalized top-k weight {index}"),
+        );
     }
 }
