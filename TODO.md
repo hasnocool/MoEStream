@@ -1,0 +1,56 @@
+# TODO
+
+## 0.1.x — Foundation
+
+- [x] Create Rust workspace/runtime scaffold.
+- [x] Define model adapter boundary.
+- [x] Add thread-safe expert cache prototype.
+- [x] Add OpenAI-compatible server skeleton.
+- [x] Add CI, changelog, architecture and governance docs.
+- [ ] Add unit tests for cache range validation and concurrent access.
+- [ ] Replace whole-file prototype reads with bounded asynchronous range reads.
+- [ ] Coalesce concurrent requests for the same expert.
+- [ ] Add bounded prefetch concurrency and cancellation.
+- [ ] Add LRU/ARC-style measured cache policy.
+- [ ] Add structured runtime metrics.
+
+## 0.2.0 — First real model adapter
+
+- [ ] Survey practical 10B–100B sparse MoE models and choose a small reference target.
+- [ ] Implement tokenizer/chat template.
+- [ ] Implement authoritative routing.
+- [ ] Implement expert tensor decoding.
+- [ ] Add CPU execution provider.
+- [ ] Compare token IDs/logits against a reference runtime.
+- [ ] Benchmark RAM, bytes/token, NVMe throughput and tokens/sec.
+
+## 0.3.0 — Predictive storage scheduling
+
+- [ ] Record authoritative route traces.
+- [ ] Implement next-layer expert prediction as scheduling-only hints.
+- [ ] Cancel losing prefetches after authoritative routing.
+- [ ] Add route-frequency based offline cache warming.
+- [ ] Measure prediction accuracy and read amplification.
+
+## 0.4.0 — Accelerator residency
+
+- [ ] Add Vulkan provider/residency experiments.
+- [ ] Add CUDA provider/residency experiments.
+- [ ] Add Metal provider/residency experiments.
+- [ ] Reserve explicit accelerator headroom.
+- [ ] Read only cache misses when device experts remain resident.
+
+## 0.5.0 — Speculative decoding
+
+- [ ] Define draft-model interface.
+- [ ] Add exact target verification transactions.
+- [ ] Benchmark coding autocomplete and chat independently.
+- [ ] Ensure target model remains authoritative for emitted tokens.
+
+## Later
+
+- [ ] Persistent conversation/KV state.
+- [ ] Multi-model hot switching.
+- [ ] Optional remote cold expert store.
+- [ ] Power-aware scheduling for laptops/off-grid systems.
+- [ ] OpencodeSmart backend integration.
