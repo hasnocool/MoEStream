@@ -4,6 +4,28 @@ All notable changes to this project will be documented in this file.
 
 The project follows Semantic Versioning.
 
+## [0.2.0-alpha.7] - 2026-08-07
+
+### Added
+
+- Qwen3 router tensor discovery for `model.layers.{layer}.mlp.gate.weight`.
+- BF16 and F32 router-weight decoding from indexed safetensors byte spans.
+- Router tensor shape and byte-length validation against configured expert count and hidden size.
+- Correctness-oriented f32 router matrix-vector execution using decoded checkpoint weights.
+- Async routing entrypoint that isolates CPU matrix-vector work on Tokio's blocking pool before applying softmax/top-k selection.
+- Unit tests for F32 loading/logits, BF16 decoding, route ordering, and normalized route weights.
+
+### Changed
+
+- Package version advanced to `0.2.0-alpha.7`.
+- The roadmap now distinguishes checkpoint router decoding/reference execution from the later parity gate required before the router path is considered production-authoritative.
+
+### Known limitations
+
+- The f32 matrix-vector reference path does not yet claim bit-for-bit parity with PyTorch BF16 linear execution or exact `torch.topk` tie behavior.
+- F16/quantized router tensors are not yet supported by this bring-up path; the official Qwen3-30B-A3B checkpoint uses BF16 router weights.
+- Tokenizer support, expert tensor decoding, CPU end-to-end execution, and token/logit parity remain pending.
+
 ## [0.2.0-alpha.6] - 2026-08-07
 
 ### Added
