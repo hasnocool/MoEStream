@@ -4,7 +4,7 @@
 
 The project is inspired by the architectural lessons of projects such as Deltafin, WASTE, llama.cpp, and other storage-aware local inference experiments, while aiming for a **model-adapter architecture rather than a single-model runtime**.
 
-> Status: **0.1.0 / architecture + runtime scaffold.** This repository does not yet execute a production LLM.
+> Status: **0.1.1 / storage-aware runtime foundation.** This repository does not yet execute a production LLM.
 
 ## Goal
 
@@ -87,17 +87,27 @@ input → resident spine → authoritative router → target experts
 
 ## Current implementation
 
-The initial Rust scaffold contains:
+The Rust runtime foundation contains:
 
 - a thread-safe `ModelAdapter` boundary;
 - authoritative expert IDs and storage locations;
-- an async expert cache prototype;
-- a runtime object that loads only routed experts;
+- bounded asynchronous expert byte-range reads;
+- request coalescing so concurrent misses for the same expert perform one physical read;
+- configurable disk-I/O concurrency using a semaphore;
+- LRU host-RAM expert eviction;
+- runtime cache metrics for hits, misses, coalescing, evictions, and physical bytes read;
+- tests for range validation, concurrent access, and LRU behavior;
 - an OpenAI-compatible API skeleton;
 - `/health` and `/v1/models` endpoints;
 - CI and project governance documentation.
 
-The cache currently uses whole-file async reads before slicing the requested expert range. This is intentionally marked as a prototype; the storage milestone will replace it with bounded range reads/direct I/O experiments and measured cache policies.
+The current cache deliberately uses ordinary asynchronous file seek/read operations. Direct I/O, io_uring-specific paths, mmap experiments, prefetch cancellation, and accelerator residency should only be added when benchmarks demonstrate that they improve the intended hardware targets.
+
+## First model target
+
+The first real adapter target is **Qwen3-30B-A3B**. It has 30.5B total parameters with roughly 3.3B activated, 128 experts, and 8 experts selected per token, making it a practical first test of NVMe-backed expert streaming on consumer hardware.
+
+See [`docs/FIRST-MODEL-TARGET.md`](docs/FIRST-MODEL-TARGET.md) for the selection rationale, implementation phases, reference-comparison plan, and benchmark matrix.
 
 ## Run the scaffold
 
@@ -117,7 +127,7 @@ curl http://127.0.0.1:8000/v1/models
 
 See [`TODO.md`](TODO.md) and [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md).
 
-The first meaningful inference milestone is a **small supported MoE model adapter** that is practical to benchmark on commodity NVMe hardware. Kimi K3 should not be the first implementation target because its scale makes iteration needlessly expensive.
+Kimi K3 remains a long-term extreme storage-streaming target, but it should follow correctness and performance validation on smaller sparse models.
 
 ## Non-goals for 0.x
 

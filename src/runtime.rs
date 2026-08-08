@@ -3,13 +3,14 @@
 use std::sync::Arc;
 
 use crate::{
-    cache::{ExpertBytes, ExpertCache},
+    cache::{CacheMetrics, ExpertBytes, ExpertCache},
     model::{ExpertId, ModelAdapter},
 };
 
 #[derive(Debug, Clone)]
 pub struct RuntimeConfig {
     pub max_cached_experts: usize,
+    pub expert_io_concurrency: usize,
     pub prefetch_concurrency: usize,
 }
 
@@ -17,6 +18,7 @@ impl Default for RuntimeConfig {
     fn default() -> Self {
         Self {
             max_cached_experts: 32,
+            expert_io_concurrency: 4,
             prefetch_concurrency: 4,
         }
     }
@@ -31,9 +33,13 @@ pub struct MoeRuntime<M: ModelAdapter> {
 
 impl<M: ModelAdapter> MoeRuntime<M> {
     pub fn new(model: M, config: RuntimeConfig) -> Self {
+        let cache = Arc::new(ExpertCache::with_io_concurrency(
+            config.max_cached_experts,
+            config.expert_io_concurrency,
+        ));
         Self {
             model: Arc::new(model),
-            cache: Arc::new(ExpertCache::new(config.max_cached_experts)),
+            cache,
             config,
         }
     }
@@ -44,6 +50,10 @@ impl<M: ModelAdapter> MoeRuntime<M> {
 
     pub fn config(&self) -> &RuntimeConfig {
         &self.config
+    }
+
+    pub fn cache_metrics(&self) -> CacheMetrics {
+        self.cache.metrics()
     }
 
     pub async fn acquire_authoritative_experts(

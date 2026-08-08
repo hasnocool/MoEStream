@@ -36,6 +36,8 @@ The scheduler will combine:
 - measured expert reuse probability;
 - cancellation of losing prefetches.
 
+Authoritative expert loads already use bounded I/O concurrency. Predictive prefetch cancellation remains a separate scheduling milestone so speculative reads cannot accidentally affect correctness.
+
 ### 4. Tiered cache
 
 ```text
@@ -46,6 +48,17 @@ L3  remote object store   optional / cold bootstrap only
 ```
 
 The runtime should promote/demote explicit expert objects rather than relying on accidental OS swapping.
+
+The current host cache implements:
+
+- asynchronous byte-range reads using seek + exact read;
+- explicit file-bound validation before allocation/read completion;
+- a semaphore limiting concurrent physical reads;
+- per-expert in-flight request coalescing;
+- LRU eviction by expert identity;
+- counters for logical hits/misses, coalesced waits, evictions, and physical bytes read.
+
+These primitives establish the baseline for later direct-I/O, io_uring, mmap, and accelerator-residency experiments. Alternative storage paths should be benchmarked against this baseline before adoption.
 
 ### 5. Execution provider
 
@@ -61,14 +74,25 @@ Compute backends are intentionally separate from storage scheduling. Planned pro
 - Async request paths must not perform blocking disk or network operations.
 - CPU-bound tensor work that cannot be asynchronous must execute in a dedicated compute pool/provider, not on Tokio worker threads.
 - Shared cache metadata must use bounded, thread-safe synchronization.
+- Physical expert reads must be limited by explicit concurrency controls.
 - Prefetch tasks must be cancellable and bounded by semaphores/queue depth.
-- Duplicate misses for the same expert should coalesce into one in-flight load.
+- Duplicate misses for the same expert must coalesce into one in-flight physical load.
+- Authoritative cache hits may update recency metadata but must never change routing decisions.
 
 ## Correctness rule
 
 A predictor can say "expert 12 will probably be needed next." It may start reading expert 12. When the real router runs, only the router's result can select the expert. A wrong prefetch costs I/O; it must never alter model output.
 
 ## Metrics to capture
+
+Already exposed by the cache foundation:
+
+- cache hits and misses;
+- coalesced concurrent waits;
+- host-cache evictions;
+- physical expert bytes read.
+
+Planned end-to-end metrics:
 
 - tokens/sec and time-to-first-token;
 - prefill vs decode time;
