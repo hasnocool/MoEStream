@@ -26,20 +26,32 @@ Storage hints are advisory only. The adapter's authoritative route must decide w
 
 ### 3. Checkpoint discovery and preparation
 
-MoEStream must inspect large upstream checkpoints without materializing tensor payloads just to discover their layout.
+MoEStream must inspect and prepare large upstream checkpoints without materializing complete model shards or expert tensors in RAM.
 
 The safetensors metadata reader therefore:
 
 - reads the 8-byte little-endian JSON-header length asynchronously;
 - caps accepted header size before allocation;
-- reads only the JSON header, never tensor payload bytes;
+- reads only the JSON header, never tensor payload bytes during discovery;
 - records dtype, shape, and data-relative `[begin, end)` offsets;
 - converts data-relative offsets into checked absolute source-file spans;
 - rejects malformed JSON, reversed ranges, out-of-bounds tensors, holes, and trailing unindexed data.
 
-For Qwen3, one logical expert is represented upstream by separate `gate_proj`, `up_proj`, and `down_proj` tensors. The first checkpoint converter will repack those three spans into one contiguous MoEStream expert record. That keeps checkpoint conversion out of the token-generation hot path and preserves one logical expert read for the cache/scheduler.
+The sharded checkpoint inventory parses `model.safetensors.index.json`, validates safe relative shard paths, loads each referenced safetensors header asynchronously, and cross-checks the index against actual shard contents. A logical tensor can then be resolved to a source shard plus an absolute byte span without reading its payload.
 
-Sharded `model.safetensors.index.json` parsing and the contiguous expert-record writer are the next checkpoint-preparation steps.
+For canonical Hugging Face Qwen3-MoE checkpoints, an expert uses three source tensors:
+
+```text
+model.layers.{layer}.mlp.experts.{expert}.gate_proj.weight
+model.layers.{layer}.mlp.experts.{expert}.up_proj.weight
+model.layers.{layer}.mlp.experts.{expert}.down_proj.weight
+```
+
+The Qwen3 preparation stage validates each projection's dtype and expected `[out_features, in_features]` shape, then copies the exact source bytes through a bounded asynchronous buffer in deterministic `gate_proj → up_proj → down_proj` order. It never decodes, transposes, quantizes, or otherwise changes tensor payload bytes.
+
+Each logical expert becomes one contiguous bank record. The generated manifest keeps projection-level subranges containing name, dtype, shape, relative offset, and length. This preserves one logical expert read for runtime storage scheduling while retaining enough information for later tensor decoding.
+
+Preparation writes `.partial` bank/manifest files, hashes the finished bank with synchronous reading and CPU hashing isolated on Tokio's blocking pool, validates the generated manifest, and only then renames the files into their published names. Failed preparations remove partial output.
 
 ### 4. Expert manifest and index
 
@@ -55,11 +67,12 @@ The current schema validates before index construction:
 - unique `(layer, expert)` identities;
 - non-zero expert spans;
 - checked offset/length arithmetic;
-- spans bounded by each source file's declared size.
+- spans bounded by each source file's declared size;
+- optional expert tensor subranges with unique names, non-zero lengths, bounded offsets, and exact contiguous coverage of the expert record.
 
-The resulting `ExpertIndex` resolves an `ExpertId` to the existing `ExpertLocation` structure consumed by the cache. Filesystem type/size checks use asynchronous Tokio APIs.
+The resulting `ExpertIndex` resolves an `ExpertId` to the existing `ExpertLocation` structure consumed by the cache and retains its `ManifestExpert` tensor metadata for future decoding. Filesystem type/size checks use asynchronous Tokio APIs.
 
-For sources with declared SHA-256 digests, `ExpertIndex::verify_declared_hashes()` performs full content verification. The method size-checks sources first, then isolates synchronous file reads and SHA-256 CPU work with `tokio::task::spawn_blocking`. Hashing uses a reusable 1 MiB buffer, so source files are streamed rather than loaded wholesale into RAM. Sources without a declared digest are intentionally skipped by content hashing.
+For sources with declared SHA-256 digests, `ExpertIndex::verify_declared_hashes()` performs full content verification. The method size-checks sources first, then uses the reusable `sha256_file()` helper, which isolates synchronous file reads and SHA-256 CPU work with `tokio::task::spawn_blocking`. Hashing uses a reusable 1 MiB buffer, so source files are streamed rather than loaded wholesale into RAM.
 
 ### 5. Expert scheduler
 
@@ -110,6 +123,7 @@ Compute backends are intentionally separate from storage scheduling. Planned pro
 
 - Async request paths must not perform blocking disk or network operations.
 - Checkpoint metadata discovery must use asynchronous file I/O and must not read tensor payloads unnecessarily.
+- Checkpoint payload repacking must use bounded asynchronous range reads/writes rather than whole-tensor allocations.
 - CPU-bound tensor work that cannot be asynchronous must execute in a dedicated compute pool/provider, not on Tokio worker threads.
 - Shared cache metadata must use bounded, thread-safe synchronization.
 - Physical expert reads must be limited by explicit concurrency controls.
@@ -127,7 +141,7 @@ A manifest may say where expert 12 resides, but it must never decide that expert
 
 A declared integrity hash is also not advisory: when present and verification is requested, a mismatch is a hard failure before the source is trusted.
 
-Checkpoint conversion may rearrange tensor bytes into a storage-optimized expert record, but it must preserve the original tensor dtype, shape, element order, and bytes exactly unless an explicitly separate quantization/conversion mode is requested later.
+Checkpoint conversion may rearrange tensor byte spans into a storage-optimized expert record, but the default preparation path must preserve each source tensor's dtype, shape, element order, and bytes exactly. Quantization, transposition, or any numerical conversion must be an explicit future mode with separate correctness validation.
 
 ## Metrics to capture
 
