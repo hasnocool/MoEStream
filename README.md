@@ -103,6 +103,12 @@ The Rust runtime foundation contains:
 
 The current cache deliberately uses ordinary asynchronous file seek/read operations. Direct I/O, io_uring-specific paths, mmap experiments, prefetch cancellation, and accelerator residency should only be added when benchmarks demonstrate that they improve the intended hardware targets.
 
+## First model target
+
+The first real adapter target is **Qwen3-30B-A3B**. It has 30.5B total parameters with roughly 3.3B activated, 128 experts, and 8 experts selected per token, making it a practical first test of NVMe-backed expert streaming on consumer hardware.
+
+See [`docs/FIRST-MODEL-TARGET.md`](docs/FIRST-MODEL-TARGET.md) for the selection rationale, implementation phases, reference-comparison plan, and benchmark matrix.
+
 ## Run the scaffold
 
 ```bash
@@ -121,7 +127,7 @@ curl http://127.0.0.1:8000/v1/models
 
 See [`TODO.md`](TODO.md) and [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md).
 
-The first meaningful inference milestone is a **small supported MoE model adapter** that is practical to benchmark on commodity NVMe hardware. Kimi K3 should not be the first implementation target because its scale makes iteration needlessly expensive.
+Kimi K3 remains a long-term extreme storage-streaming target, but it should follow correctness and performance validation on smaller sparse models.
 
 ## Non-goals for 0.x
 
