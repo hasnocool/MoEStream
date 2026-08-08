@@ -29,7 +29,9 @@
 - [x] Generate manifests automatically from supported Qwen3 safetensors checkpoints.
 - [x] Load and decode Qwen3 `mlp.gate.weight` router tensors from BF16/F32 safetensors spans.
 - [x] Add non-blocking reference router matrix-vector execution using the decoded tensor.
-- [ ] Verify exact PyTorch `topk` tie behavior, router dtype/accumulation semantics, and router output parity.
+- [x] Add a recorded PyTorch BF16 CPU parity fixture for router logits, softmax, top-k indices, and normalized weights.
+- [x] Document tied `torch.topk` ordering as a non-portable reference-runtime behavior rather than a model contract.
+- [ ] Verify at least one real Qwen3-30B-A3B checkpoint router layer against a captured PyTorch hidden-state fixture.
 - [ ] Promote the verified router path to authoritative production routing.
 - [ ] Implement tokenizer/chat template.
 - [ ] Implement expert tensor decoding.
