@@ -4,6 +4,31 @@ All notable changes to this project will be documented in this file.
 
 The project follows Semantic Versioning.
 
+## [0.2.0-alpha.4] - 2026-08-07
+
+### Added
+
+- Asynchronous safetensors prefix/header reader that does not read tensor payload bytes.
+- Structured tensor metadata for dtype, shape, and data-relative offsets.
+- Absolute source-file tensor span resolution for later checkpoint conversion.
+- Header-size limits and checked offset arithmetic for untrusted or corrupted checkpoint metadata.
+- Validation that tensor spans remain in bounds and cover the safetensors data section without holes or trailing unindexed bytes.
+- Tests covering metadata extraction, absolute span resolution, malformed JSON, oversized headers, out-of-bounds tensor spans, layout holes, and trailing data.
+
+### Changed
+
+- Package version advanced to `0.2.0-alpha.4`.
+- Checkpoint preparation is now explicitly split into metadata discovery, sharded-index inventory, and contiguous expert-bank repacking.
+
+### Design decision
+
+- Qwen3 experts are represented upstream by separate `gate_proj`, `up_proj`, and `down_proj` tensors. The first converter will repack those spans into one contiguous MoEStream expert record so the hot runtime can preserve one logical expert read instead of issuing multiple source-file reads.
+
+### Known limitations
+
+- Sharded `model.safetensors.index.json` inventory is not yet implemented.
+- No tensor payload is decoded or converted by this release.
+
 ## [0.2.0-alpha.3] - 2026-08-07
 
 ### Added
