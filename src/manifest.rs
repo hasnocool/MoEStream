@@ -72,7 +72,10 @@ impl ExpertManifest {
             self.schema_version,
             MANIFEST_SCHEMA_VERSION
         );
-        ensure!(!self.model.trim().is_empty(), "manifest model cannot be empty");
+        ensure!(
+            !self.model.trim().is_empty(),
+            "manifest model cannot be empty"
+        );
         ensure!(!self.files.is_empty(), "manifest files cannot be empty");
         ensure!(!self.experts.is_empty(), "manifest experts cannot be empty");
 
@@ -80,7 +83,10 @@ impl ExpertManifest {
             ensure!(!name.trim().is_empty(), "manifest file key cannot be empty");
             validate_relative_path(&file.path)
                 .with_context(|| format!("invalid manifest file {name:?}"))?;
-            ensure!(file.size > 0, "manifest file {name:?} size must be non-zero");
+            ensure!(
+                file.size > 0,
+                "manifest file {name:?} size must be non-zero"
+            );
             if let Some(sha256) = &file.sha256 {
                 validate_sha256(sha256)
                     .with_context(|| format!("invalid SHA-256 for manifest file {name:?}"))?;
@@ -214,7 +220,10 @@ impl ExpertIndex {
 
 fn validate_relative_path(path: &Path) -> anyhow::Result<()> {
     ensure!(!path.as_os_str().is_empty(), "path cannot be empty");
-    ensure!(!path.is_absolute(), "path must be relative to the model root");
+    ensure!(
+        !path.is_absolute(),
+        "path must be relative to the model root"
+    );
 
     for component in path.components() {
         ensure!(
@@ -226,7 +235,10 @@ fn validate_relative_path(path: &Path) -> anyhow::Result<()> {
 }
 
 fn validate_sha256(value: &str) -> anyhow::Result<()> {
-    ensure!(value.len() == 64, "SHA-256 must contain 64 hexadecimal characters");
+    ensure!(
+        value.len() == 64,
+        "SHA-256 must contain 64 hexadecimal characters"
+    );
     ensure!(
         value.bytes().all(|byte| byte.is_ascii_hexdigit()),
         "SHA-256 must contain only hexadecimal characters"
@@ -278,7 +290,10 @@ mod tests {
                 expert: 1,
             })
             .expect("expert location");
-        assert_eq!(location.path, Path::new("/models/qwen3/experts/experts-0.bin"));
+        assert_eq!(
+            location.path,
+            Path::new("/models/qwen3/experts/experts-0.bin")
+        );
         assert_eq!(location.offset, 4);
         assert_eq!(location.length, 4);
     }
@@ -295,17 +310,18 @@ mod tests {
 
     #[test]
     fn rejects_path_traversal() {
-        let json = valid_manifest_json().replace(
-            "experts/experts-0.bin",
-            "../outside-model-root.bin",
-        );
+        let json =
+            valid_manifest_json().replace("experts/experts-0.bin", "../outside-model-root.bin");
         let error = ExpertManifest::from_json(&json).expect_err("path traversal must fail");
         assert!(error.to_string().contains("invalid manifest file"));
     }
 
     #[test]
     fn rejects_expert_range_past_declared_file_size() {
-        let json = valid_manifest_json().replace("\"offset\": 4, \"length\": 4", "\"offset\": 14, \"length\": 4");
+        let json = valid_manifest_json().replace(
+            "\"offset\": 4, \"length\": 4",
+            "\"offset\": 14, \"length\": 4",
+        );
         let error = ExpertManifest::from_json(&json).expect_err("out-of-range span must fail");
         assert!(error.to_string().contains("exceeds declared file size"));
     }
@@ -323,6 +339,9 @@ mod tests {
 
         let manifest = ExpertManifest::from_json(&valid_manifest_json()).expect("valid manifest");
         let index = manifest.build_index(root.path()).expect("build index");
-        index.verify_file_sizes().await.expect("file-size verification");
+        index
+            .verify_file_sizes()
+            .await
+            .expect("file-size verification");
     }
 }
