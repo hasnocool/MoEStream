@@ -4,6 +4,26 @@ All notable changes to this project will be documented in this file.
 
 The project follows Semantic Versioning.
 
+## [0.2.0-alpha.5] - 2026-08-07
+
+### Added
+
+- Parser and validator for sharded `model.safetensors.index.json` checkpoint indexes.
+- Safe relative `.safetensors` shard-path validation with traversal rejection.
+- Header-only checkpoint inventory that cross-checks every weight-map entry against the declared shard and rejects unindexed tensors in referenced shards.
+- Tensor resolution from logical tensor name to source shard, dtype/shape metadata, and absolute source-file byte span.
+- Unit tests for multi-shard inventory, path traversal, stale shard mappings, and partial indexes.
+
+### Changed
+
+- Package version advanced to `0.2.0-alpha.5`.
+- Qwen3 checkpoint preparation can now discover the full sharded tensor inventory without loading tensor payloads into RAM.
+
+### Known limitations
+
+- Qwen3 `gate_proj`, `up_proj`, and `down_proj` tensor payloads are not yet repacked into contiguous expert records.
+- Automatic expert-bank manifest generation remains pending the repacking stage.
+
 ## [0.2.0-alpha.4] - 2026-08-07
 
 ### Added
@@ -98,7 +118,7 @@ The project follows Semantic Versioning.
 - Configurable expert I/O concurrency limits.
 - LRU cache eviction.
 - Cache metrics for hits, misses, coalesced waits, evictions, and bytes read.
-- Unit tests for range validation, concurrent loads, and LRU behavior.
+- Unit tests for range validation, concurrent access, and LRU behavior.
 - First-adapter target analysis selecting Qwen3-30B-A3B and defining the correctness/benchmark plan.
 
 ### Changed

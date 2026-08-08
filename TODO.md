@@ -24,7 +24,7 @@
 - [x] Verify declared source SHA-256 hashes against file contents without blocking Tokio worker threads.
 - [x] Read and validate safetensors headers asynchronously without loading tensor payloads.
 - [x] Resolve safetensors data-relative tensor offsets into absolute source-file spans.
-- [ ] Parse sharded `model.safetensors.index.json` files and inventory all checkpoint tensors.
+- [x] Parse sharded `model.safetensors.index.json` files and inventory all checkpoint tensors.
 - [ ] Generate contiguous MoEStream expert-bank records from Qwen3 `gate_proj`, `up_proj`, and `down_proj` tensors.
 - [ ] Generate manifests automatically from supported source checkpoints.
 - [ ] Verify exact PyTorch `topk` tie behavior and router output parity.
