@@ -17,8 +17,11 @@
 ## 0.2.0 — First real model adapter
 
 - [x] Survey practical 10B–100B sparse MoE models and choose Qwen3-30B-A3B as the reference target.
+- [x] Parse and validate Qwen3 MoE configuration metadata.
+- [x] Add a deterministic softmax/top-k routing reference helper for fixtures.
+- [ ] Verify exact PyTorch `topk` tie behavior and router output parity.
 - [ ] Implement tokenizer/chat template.
-- [ ] Implement authoritative routing.
+- [ ] Implement authoritative router-weight tensor decoding and routing.
 - [ ] Implement expert tensor decoding.
 - [ ] Add CPU execution provider.
 - [ ] Compare token IDs/logits against a reference runtime.
