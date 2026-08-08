@@ -215,10 +215,21 @@ mod tests {
     #[tokio::test]
     async fn inventories_shards_and_resolves_absolute_tensor_span() {
         let root = tempdir().expect("checkpoint root");
-        let shard_a = r#"{"layer.0.expert.0.gate":{"dtype":"F16","shape":[2],"data_offsets":[0,4]}}"#;
+        let shard_a =
+            r#"{"layer.0.expert.0.gate":{"dtype":"F16","shape":[2],"data_offsets":[0,4]}}"#;
         let shard_b = r#"{"layer.0.expert.0.up":{"dtype":"F16","shape":[2],"data_offsets":[0,4]}}"#;
-        write_shard(&root.path().join("model-00001-of-00002.safetensors"), shard_a, &[0; 4]).await;
-        write_shard(&root.path().join("model-00002-of-00002.safetensors"), shard_b, &[0; 4]).await;
+        write_shard(
+            &root.path().join("model-00001-of-00002.safetensors"),
+            shard_a,
+            &[0; 4],
+        )
+        .await;
+        write_shard(
+            &root.path().join("model-00002-of-00002.safetensors"),
+            shard_b,
+            &[0; 4],
+        )
+        .await;
 
         let json = r#"{
             "metadata":{"total_size":8},
@@ -258,10 +269,9 @@ mod tests {
         let header = r#"{"actual":{"dtype":"F16","shape":[2],"data_offsets":[0,4]}}"#;
         write_shard(&root.path().join("model.safetensors"), header, &[0; 4]).await;
 
-        let index = SafetensorsIndex::from_json(
-            r#"{"weight_map":{"expected":"model.safetensors"}}"#,
-        )
-        .expect("valid index syntax");
+        let index =
+            SafetensorsIndex::from_json(r#"{"weight_map":{"expected":"model.safetensors"}}"#)
+                .expect("valid index syntax");
         let error = index
             .inventory(root.path())
             .await
@@ -275,10 +285,8 @@ mod tests {
         let header = r#"{"mapped":{"dtype":"F16","shape":[1],"data_offsets":[0,2]},"extra":{"dtype":"F16","shape":[1],"data_offsets":[2,4]}}"#;
         write_shard(&root.path().join("model.safetensors"), header, &[0; 4]).await;
 
-        let index = SafetensorsIndex::from_json(
-            r#"{"weight_map":{"mapped":"model.safetensors"}}"#,
-        )
-        .expect("valid index syntax");
+        let index = SafetensorsIndex::from_json(r#"{"weight_map":{"mapped":"model.safetensors"}}"#)
+            .expect("valid index syntax");
         let error = index
             .inventory(root.path())
             .await
