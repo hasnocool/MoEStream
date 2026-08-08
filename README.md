@@ -4,7 +4,7 @@
 
 The project is inspired by the architectural lessons of projects such as Deltafin, WASTE, llama.cpp, and other storage-aware local inference experiments, while aiming for a **model-adapter architecture rather than a single-model runtime**.
 
-> Status: **0.2.0-alpha.5 / Qwen3 adapter + sharded safetensors checkpoint inventory.** This repository does not yet execute a production LLM.
+> Status: **0.2.0-alpha.6 / Qwen3 adapter + streaming expert-bank preparation.** This repository does not yet execute a production LLM.
 
 ## Goal
 
@@ -100,24 +100,29 @@ The Rust runtime foundation contains:
 - Qwen3 MoE config parsing and structural validation;
 - a correctness-oriented Qwen3 softmax/top-k routing fixture helper;
 - a versioned expert-bank manifest/index that maps `(layer, expert)` IDs to validated source-file byte ranges;
+- validated per-expert tensor subranges carrying projection name, dtype, shape, offset, and length;
 - safe relative-path checks, duplicate-ID/range validation, asynchronous declared-size verification, and SHA-256 content verification for expert-bank files;
 - an asynchronous safetensors header parser that discovers dtype, shape, and exact source-file tensor spans without reading weight payloads;
 - safetensors layout validation for bounded, contiguous tensor data sections;
 - sharded `model.safetensors.index.json` parsing with safe shard-path validation;
 - header-only checkpoint inventory that cross-checks weight-map entries against actual shard contents and resolves tensors to absolute source spans;
+- canonical Hugging Face Qwen3 expert discovery using `model.layers.{layer}.mlp.experts.{expert}.{gate_proj,up_proj,down_proj}.weight`;
+- bounded asynchronous Qwen3 expert-bank repacking in deterministic `gate_proj → up_proj → down_proj` order;
+- Qwen3 projection dtype/shape checks before copying payload bytes;
+- automatic SHA-256-backed expert-manifest generation with atomic partial-file publishing and failed-conversion cleanup;
 - an OpenAI-compatible API skeleton;
 - `/health` and `/v1/models` endpoints;
 - CI and project governance documentation.
 
 The current cache deliberately uses ordinary asynchronous file seek/read operations. Direct I/O, io_uring-specific paths, mmap experiments, prefetch cancellation, and accelerator residency should only be added when benchmarks demonstrate that they improve the intended hardware targets.
 
-Expert-bank integrity verification streams source files through a 1 MiB hashing buffer, so full model files are never materialized in RAM. Sources without declared hashes remain size-validated but are skipped by content verification.
+Expert-bank integrity verification streams source files through a 1 MiB hashing buffer, so full model files are never materialized in RAM. Sources without declared hashes remain size-validated but are skipped by content verification. The reusable hashing helper moves synchronous file reads and sustained hashing onto Tokio's blocking pool.
 
 Checkpoint discovery reads only the safetensors prefix and JSON headers. Sharded checkpoint inventory adds the index JSON and cross-checks every referenced shard header without touching tensor payload bytes, so even very large Qwen3 checkpoints can be structurally inventoried with bounded memory.
 
-For Qwen3, upstream experts use separate `gate_proj`, `up_proj`, and `down_proj` tensors. The next converter stage will copy those three source spans into one contiguous MoEStream expert record, preserving the runtime's one-logical-read-per-expert design and then emitting the validated expert-bank manifest automatically.
+Qwen3 checkpoint preparation can now turn the canonical per-expert `gate_proj`, `up_proj`, and `down_proj` source tensors into one contiguous record per expert. Each record keeps explicit projection subranges in the generated manifest, preserving one logical expert storage read without losing the metadata needed for future tensor decoding. The preparation path copies payloads through a bounded 1 MiB buffer rather than allocating complete expert tensors.
 
-The Qwen3 routing helper operates on already-computed router logits. It is not yet the authoritative tensor-level router; router weight decoding, exact reference parity, tokenizer support, and expert execution remain part of the 0.2 milestone.
+The Qwen3 routing helper operates on already-computed router logits. It is not yet the authoritative tensor-level router; router weight decoding, exact reference parity, tokenizer support, expert tensor execution, and a user-facing checkpoint-preparation CLI remain part of the 0.2 milestone.
 
 ## First model target
 
