@@ -4,6 +4,30 @@ All notable changes to this project will be documented in this file.
 
 The project follows Semantic Versioning.
 
+## [0.2.0-alpha.6] - 2026-08-07
+
+### Added
+
+- Canonical Hugging Face Qwen3-MoE expert tensor naming for `model.layers.{layer}.mlp.experts.{expert}.{gate_proj,up_proj,down_proj}.weight`.
+- Streaming expert-bank preparation that copies bounded source tensor spans asynchronously instead of materializing whole tensors in RAM.
+- Deterministic per-expert packing order: `gate_proj`, `up_proj`, then `down_proj`.
+- Qwen3 projection dtype and shape validation against adapter configuration before copying payload bytes.
+- Expert manifest tensor subranges carrying projection name, dtype, shape, relative offset, and length.
+- Automatic expert-bank SHA-256 calculation and validated manifest generation.
+- Atomic `.partial` output publishing and failed-conversion cleanup.
+- End-to-end synthetic checkpoint tests for byte-exact repacking, manifest subranges, canonical names, and shape-mismatch failure cleanup.
+
+### Changed
+
+- Package version advanced to `0.2.0-alpha.6`.
+- Expert manifests remain backward-compatible when tensor subrange metadata is absent.
+- SHA-256 file hashing is exposed as a reusable async helper while keeping synchronous file reads and hashing off Tokio worker threads.
+
+### Known limitations
+
+- Expert-bank preparation is currently a library API; a CLI conversion command and progress reporting are still pending.
+- The runtime does not yet decode or execute the packed expert tensors.
+
 ## [0.2.0-alpha.5] - 2026-08-07
 
 ### Added
