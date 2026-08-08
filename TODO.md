@@ -33,7 +33,10 @@
 - [x] Document tied `torch.topk` ordering as a non-portable reference-runtime behavior rather than a model contract.
 - [ ] Verify at least one real Qwen3-30B-A3B checkpoint router layer against a captured PyTorch hidden-state fixture.
 - [ ] Promote the verified router path to authoritative production routing.
-- [ ] Implement tokenizer/chat template.
+- [x] Load checkpoint `tokenizer.json` and `tokenizer_config.json` without blocking Tokio worker threads.
+- [x] Execute the checkpoint-provided Jinja chat template with Python-compatible string methods and Qwen thinking/tool context passthrough.
+- [x] Run tokenizer encode/decode CPU work outside Tokio worker threads.
+- [ ] Add recorded Transformers/Qwen3 token-ID and chat-template parity fixtures using the official tokenizer assets.
 - [ ] Implement expert tensor decoding.
 - [ ] Add CPU execution provider.
 - [ ] Compare token IDs/logits against a reference runtime.
