@@ -19,6 +19,10 @@
 - [x] Survey practical 10B–100B sparse MoE models and choose Qwen3-30B-A3B as the reference target.
 - [x] Parse and validate Qwen3 MoE configuration metadata.
 - [x] Add a deterministic softmax/top-k routing reference helper for fixtures.
+- [x] Add a versioned expert-bank manifest/index mapping `(layer, expert)` to validated byte ranges.
+- [x] Validate manifest source paths, declared file sizes, duplicate expert IDs, and range bounds.
+- [ ] Verify declared source SHA-256 hashes against file contents.
+- [ ] Generate manifests automatically from supported source checkpoints.
 - [ ] Verify exact PyTorch `topk` tie behavior and router output parity.
 - [ ] Implement tokenizer/chat template.
 - [ ] Implement authoritative router-weight tensor decoding and routing.
