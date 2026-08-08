@@ -7,12 +7,12 @@
 - [x] Add thread-safe expert cache prototype.
 - [x] Add OpenAI-compatible server skeleton.
 - [x] Add CI, changelog, architecture and governance docs.
-- [ ] Add unit tests for cache range validation and concurrent access.
-- [ ] Replace whole-file prototype reads with bounded asynchronous range reads.
-- [ ] Coalesce concurrent requests for the same expert.
+- [x] Add unit tests for cache range validation and concurrent access.
+- [x] Replace whole-file prototype reads with bounded asynchronous range reads.
+- [x] Coalesce concurrent requests for the same expert.
 - [ ] Add bounded prefetch concurrency and cancellation.
-- [ ] Add LRU/ARC-style measured cache policy.
-- [ ] Add structured runtime metrics.
+- [x] Add LRU/ARC-style measured cache policy.
+- [x] Add structured runtime metrics.
 
 ## 0.2.0 — First real model adapter
 
