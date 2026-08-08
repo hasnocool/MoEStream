@@ -179,7 +179,10 @@ async fn read_router_weights(tensor: &IndexedTensor) -> anyhow::Result<Vec<f32>>
 }
 
 fn decode_bf16(bytes: &[u8]) -> anyhow::Result<Vec<f32>> {
-    ensure!(bytes.len() % 2 == 0, "BF16 byte length must be divisible by 2");
+    ensure!(
+        bytes.len() % 2 == 0,
+        "BF16 byte length must be divisible by 2"
+    );
     Ok(bytes
         .chunks_exact(2)
         .map(|chunk| {
@@ -190,7 +193,10 @@ fn decode_bf16(bytes: &[u8]) -> anyhow::Result<Vec<f32>> {
 }
 
 fn decode_f32(bytes: &[u8]) -> anyhow::Result<Vec<f32>> {
-    ensure!(bytes.len() % 4 == 0, "F32 byte length must be divisible by 4");
+    ensure!(
+        bytes.len() % 4 == 0,
+        "F32 byte length must be divisible by 4"
+    );
     let values = bytes
         .chunks_exact(4)
         .map(|chunk| f32::from_le_bytes([chunk[0], chunk[1], chunk[2], chunk[3]]))
@@ -250,7 +256,9 @@ mod tests {
         file.write_all(&(header.len() as u64).to_le_bytes())
             .await
             .expect("write header length");
-        file.write_all(header.as_bytes()).await.expect("write header");
+        file.write_all(header.as_bytes())
+            .await
+            .expect("write header");
         file.write_all(&payload).await.expect("write payload");
         file.flush().await.expect("flush shard");
         let index = serde_json::json!({"weight_map": {name: "model.safetensors"}});
