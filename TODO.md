@@ -27,6 +27,10 @@
 - [x] Parse sharded `model.safetensors.index.json` files and inventory all checkpoint tensors.
 - [x] Generate contiguous MoEStream expert-bank records from Qwen3 `gate_proj`, `up_proj`, and `down_proj` tensors.
 - [x] Generate manifests automatically from supported Qwen3 safetensors checkpoints.
+- [x] Finalize generated Qwen3 expert banks with SHA-256 manifests without blocking Tokio worker threads.
+- [x] Clean stale and failed expert-bank temporary output through the verified preparation path.
+- [ ] Add projection-level tensor subranges to manifests for direct runtime tensor decoding.
+- [ ] Add a CLI checkpoint-preparation command and progress reporting.
 - [ ] Verify exact PyTorch `topk` tie behavior and router output parity.
 - [ ] Implement tokenizer/chat template.
 - [ ] Implement authoritative router-weight tensor decoding and routing.
