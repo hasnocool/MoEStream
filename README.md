@@ -4,7 +4,7 @@
 
 The project is inspired by the architectural lessons of projects such as Deltafin, WASTE, llama.cpp, and other storage-aware local inference experiments, while aiming for a **model-adapter architecture rather than a single-model runtime**.
 
-> Status: **0.2.0-alpha.6 / Qwen3 adapter + contiguous expert-bank conversion.** This repository does not yet execute a production LLM.
+> Status: **0.2.0-alpha.7 / Qwen3 adapter + router tensor bring-up.** This repository does not yet execute a production LLM.
 
 ## Goal
 
@@ -109,6 +109,8 @@ The Rust runtime foundation contains:
 - bounded asynchronous repacking of those three source spans into deterministic contiguous expert-bank records;
 - automatic validated expert-bank manifest generation with layer/expert offsets and lengths;
 - temporary-file publication so partially written banks/manifests are not exposed as completed output;
+- Qwen3 `mlp.gate.weight` discovery, BF16/F32 decoding, and router tensor shape/byte validation;
+- correctness-oriented router matrix-vector execution with CPU work isolated from Tokio worker threads;
 - an OpenAI-compatible API skeleton;
 - `/health` and `/v1/models` endpoints;
 - CI and project governance documentation.
@@ -119,9 +121,9 @@ Expert-bank integrity verification streams source files through a 1 MiB hashing 
 
 Checkpoint discovery reads only the safetensors prefix and JSON headers. Sharded checkpoint inventory adds the index JSON and cross-checks every referenced shard header without touching tensor payload bytes, so even very large Qwen3 checkpoints can be structurally inventoried with bounded memory.
 
-For Qwen3, the preparation layer now validates expected expert tensor names, dtypes, and shapes, then copies `gate_proj`, `up_proj`, and `down_proj` in deterministic layer/expert order into one contiguous expert record. Copying uses a bounded 1 MiB buffer and async seek/read/write operations, so neither source shards nor complete expert banks are materialized in RAM. A matching runtime manifest is generated automatically.
+For Qwen3, the preparation layer validates expected expert tensor names, dtypes, and shapes, then copies `gate_proj`, `up_proj`, and `down_proj` in deterministic layer/expert order into one contiguous expert record. Copying uses a bounded 1 MiB buffer and async seek/read/write operations, so neither source shards nor complete expert banks are materialized in RAM. A matching runtime manifest is generated automatically.
 
-The Qwen3 routing helper operates on already-computed router logits. It is not yet the authoritative tensor-level router; router weight decoding, exact reference parity, tokenizer support, and expert execution remain part of the 0.2 milestone.
+The router bring-up now reads the real `model.layers.{layer}.mlp.gate.weight` tensor, validates `[num_experts, hidden_size]`, decodes official BF16 weights, and can calculate reference logits/routes. This path remains explicitly non-authoritative until its BF16 execution semantics and exact `torch.topk` behavior are compared against the reference runtime.
 
 ## First model target
 
