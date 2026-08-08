@@ -4,7 +4,7 @@
 
 The project is inspired by the architectural lessons of projects such as Deltafin, WASTE, llama.cpp, and other storage-aware local inference experiments, while aiming for a **model-adapter architecture rather than a single-model runtime**.
 
-> Status: **0.2.0-alpha.7 / Qwen3 adapter + router tensor bring-up.** This repository does not yet execute a production LLM.
+> Status: **0.2.0-alpha.8 / Qwen3 adapter + router bring-up + integrity-finalized expert-bank conversion.** This repository does not yet execute a production LLM.
 
 ## Goal
 
@@ -40,7 +40,7 @@ Make sparse models that are larger than system RAM practically usable on laptops
 ## Design principles
 
 1. **Correctness first.** Prefetch prediction may schedule I/O but never replace authoritative model routing.
-2. **Sparse models first.** Dense models require most weights per token and usually gain less from storage streaming.
+2. **Sparse models first.** Dense models require most of their parameters for every generated token and usually gain less from storage streaming.
 3. **Non-blocking orchestration.** Disk and network operations are async; expensive blocking work must be isolated from executor threads.
 4. **Model-specific semantics behind adapters.** Routing, tensor layout, tokenizer, attention variants, and expert storage formats belong in model adapters/providers.
 5. **Storage is a tier, not fake RAM.** The runtime explicitly schedules NVMe reads, cache admission, residency, and eviction.
@@ -109,6 +109,8 @@ The Rust runtime foundation contains:
 - bounded asynchronous repacking of those three source spans into deterministic contiguous expert-bank records;
 - automatic validated expert-bank manifest generation with layer/expert offsets and lengths;
 - temporary-file publication so partially written banks/manifests are not exposed as completed output;
+- a verified preparation wrapper that checks physical bank size, hashes the completed bank, and atomically rewrites the manifest with SHA-256 metadata;
+- stale/failed expert-bank temporary-output cleanup around the verified preparation path;
 - Qwen3 `mlp.gate.weight` discovery, BF16/F32 decoding, and router tensor shape/byte validation;
 - correctness-oriented router matrix-vector execution with CPU work isolated from Tokio worker threads;
 - an OpenAI-compatible API skeleton;
@@ -117,13 +119,13 @@ The Rust runtime foundation contains:
 
 The current cache deliberately uses ordinary asynchronous file seek/read operations. Direct I/O, io_uring-specific paths, mmap experiments, prefetch cancellation, and accelerator residency should only be added when benchmarks demonstrate that they improve the intended hardware targets.
 
-Expert-bank integrity verification streams source files through a 1 MiB hashing buffer, so full model files are never materialized in RAM. Sources without declared hashes remain size-validated but are skipped by content verification.
+Expert-bank integrity verification streams source files through a 1 MiB hashing buffer, so full model files are never materialized in RAM. Newly generated Qwen3 banks can now be finalized through the same integrity model: the verified preparation wrapper checks the physical size, hashes the bank with synchronous reads and CPU hashing isolated on Tokio's blocking pool, and atomically rewrites the manifest with the digest.
 
 Checkpoint discovery reads only the safetensors prefix and JSON headers. Sharded checkpoint inventory adds the index JSON and cross-checks every referenced shard header without touching tensor payload bytes, so even very large Qwen3 checkpoints can be structurally inventoried with bounded memory.
 
-For Qwen3, the preparation layer validates expected expert tensor names, dtypes, and shapes, then copies `gate_proj`, `up_proj`, and `down_proj` in deterministic layer/expert order into one contiguous expert record. Copying uses a bounded 1 MiB buffer and async seek/read/write operations, so neither source shards nor complete expert banks are materialized in RAM. A matching runtime manifest is generated automatically.
+For Qwen3, the preparation layer validates expected expert tensor names, dtypes, and shapes, then copies `gate_proj`, `up_proj`, and `down_proj` in deterministic layer/expert order into one contiguous expert record. Copying uses a bounded 1 MiB buffer and async seek/read/write operations, so neither source shards nor complete expert banks are materialized in RAM. The verified wrapper cleans stale temporary files before conversion and removes ambiguous output if integrity finalization fails.
 
-The router bring-up now reads the real `model.layers.{layer}.mlp.gate.weight` tensor, validates `[num_experts, hidden_size]`, decodes official BF16 weights, and can calculate reference logits/routes. This path remains explicitly non-authoritative until its BF16 execution semantics and exact `torch.topk` behavior are compared against the reference runtime.
+The router bring-up reads the real `model.layers.{layer}.mlp.gate.weight` tensor, validates `[num_experts, hidden_size]`, decodes official BF16 weights, and can calculate reference logits/routes. This path remains explicitly non-authoritative until its BF16 execution semantics and exact `torch.topk` behavior are compared against the reference runtime.
 
 ## First model target
 
