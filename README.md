@@ -4,7 +4,7 @@
 
 The project is inspired by the architectural lessons of projects such as Deltafin, WASTE, llama.cpp, and other storage-aware local inference experiments, while aiming for a **model-adapter architecture rather than a single-model runtime**.
 
-> Status: **0.1.0 / architecture + runtime scaffold.** This repository does not yet execute a production LLM.
+> Status: **0.1.1 / storage-aware runtime foundation.** This repository does not yet execute a production LLM.
 
 ## Goal
 
@@ -87,17 +87,21 @@ input → resident spine → authoritative router → target experts
 
 ## Current implementation
 
-The initial Rust scaffold contains:
+The Rust runtime foundation contains:
 
 - a thread-safe `ModelAdapter` boundary;
 - authoritative expert IDs and storage locations;
-- an async expert cache prototype;
-- a runtime object that loads only routed experts;
+- bounded asynchronous expert byte-range reads;
+- request coalescing so concurrent misses for the same expert perform one physical read;
+- configurable disk-I/O concurrency using a semaphore;
+- LRU host-RAM expert eviction;
+- runtime cache metrics for hits, misses, coalescing, evictions, and physical bytes read;
+- tests for range validation, concurrent access, and LRU behavior;
 - an OpenAI-compatible API skeleton;
 - `/health` and `/v1/models` endpoints;
 - CI and project governance documentation.
 
-The cache currently uses whole-file async reads before slicing the requested expert range. This is intentionally marked as a prototype; the storage milestone will replace it with bounded range reads/direct I/O experiments and measured cache policies.
+The current cache deliberately uses ordinary asynchronous file seek/read operations. Direct I/O, io_uring-specific paths, mmap experiments, prefetch cancellation, and accelerator residency should only be added when benchmarks demonstrate that they improve the intended hardware targets.
 
 ## Run the scaffold
 
