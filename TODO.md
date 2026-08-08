@@ -16,13 +16,15 @@
 
 ## 0.2.0 — First real model adapter
 
-- [ ] Survey practical 10B–100B sparse MoE models and choose a small reference target.
+- [x] Survey practical 10B–100B sparse MoE models and choose Qwen3-30B-A3B as the reference target.
 - [ ] Implement tokenizer/chat template.
 - [ ] Implement authoritative routing.
 - [ ] Implement expert tensor decoding.
 - [ ] Add CPU execution provider.
 - [ ] Compare token IDs/logits against a reference runtime.
 - [ ] Benchmark RAM, bytes/token, NVMe throughput and tokens/sec.
+
+See [`docs/FIRST-MODEL-TARGET.md`](docs/FIRST-MODEL-TARGET.md) for the target rationale and verification plan.
 
 ## 0.3.0 — Predictive storage scheduling
 
