@@ -14,11 +14,13 @@ The project follows Semantic Versioning.
 - LRU cache eviction.
 - Cache metrics for hits, misses, coalesced waits, evictions, and bytes read.
 - Unit tests for range validation, concurrent loads, and LRU behavior.
+- First-adapter target analysis selecting Qwen3-30B-A3B and defining the correctness/benchmark plan.
 
 ### Changed
 
 - Runtime configuration now exposes expert I/O concurrency.
 - Expert loading no longer reads entire expert-bank files before slicing ranges.
+- CLI status output derives its version directly from Cargo package metadata.
 
 ## [0.1.0] - 2026-08-07
 
