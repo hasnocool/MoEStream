@@ -1,11 +1,21 @@
 // src/adapters/qwen3_checkpoint.rs
 
+use std::{collections::HashMap, path::Path};
+
 use anyhow::{Context, ensure};
+use tokio::io::{AsyncReadExt, AsyncSeekExt, AsyncWriteExt};
 
 use crate::{
     adapters::qwen3::Qwen3MoeConfig,
     checkpoint::{CheckpointInventory, IndexedTensor},
+    manifest::{ExpertManifest, MANIFEST_SCHEMA_VERSION, ManifestExpert, ManifestFile},
+    safetensors::TensorSpan,
 };
+
+const COPY_BUFFER_BYTES: usize = 1024 * 1024;
+const BANK_FILE_NAME: &str = "experts.bin";
+const MANIFEST_FILE_NAME: &str = "experts.manifest.json";
+const BANK_FILE_KEY: &str = "experts";
 
 #[derive(Debug, Clone)]
 pub struct Qwen3ExpertSource {
@@ -25,6 +35,13 @@ impl Qwen3ExpertSource {
             .and_then(|value| value.checked_add(self.down_proj.span.length))
             .context("Qwen3 packed expert length overflow")
     }
+}
+
+#[derive(Debug, Clone)]
+pub struct PackedExpertBank {
+    pub bank_path: std::path::PathBuf,
+    pub manifest_path: std::path::PathBuf,
+    pub manifest: ExpertManifest,
 }
 
 pub fn discover_expert_sources(
@@ -64,6 +81,130 @@ pub fn discover_expert_sources(
     }
 
     Ok(experts)
+}
+
+/// Repack Qwen3 expert projection tensors into one contiguous expert bank.
+///
+/// The output order is deterministic: layer-major, expert-major, then
+/// `gate_proj`, `up_proj`, `down_proj`. Source tensor payloads are copied with
+/// bounded asynchronous range reads and writes; full shards or experts are
+/// never materialized in memory.
+pub async fn pack_expert_bank(
+    inventory: &CheckpointInventory,
+    config: &Qwen3MoeConfig,
+    model_id: &str,
+    output_root: &Path,
+) -> anyhow::Result<PackedExpertBank> {
+    ensure!(!model_id.trim().is_empty(), "model_id cannot be empty");
+    let experts = discover_expert_sources(inventory, config)?;
+    tokio::fs::create_dir_all(output_root)
+        .await
+        .with_context(|| format!("create expert-bank directory {}", output_root.display()))?;
+
+    let bank_path = output_root.join(BANK_FILE_NAME);
+    let bank_tmp = output_root.join(format!("{BANK_FILE_NAME}.tmp"));
+    let manifest_path = output_root.join(MANIFEST_FILE_NAME);
+    let manifest_tmp = output_root.join(format!("{MANIFEST_FILE_NAME}.tmp"));
+
+    let mut output = tokio::fs::File::create(&bank_tmp)
+        .await
+        .with_context(|| format!("create temporary expert bank {}", bank_tmp.display()))?;
+    let mut manifest_experts = Vec::with_capacity(experts.len());
+    let mut bank_offset = 0_u64;
+
+    for source in &experts {
+        let expert_offset = bank_offset;
+        for tensor in [&source.gate_proj, &source.up_proj, &source.down_proj] {
+            copy_tensor_span(&tensor.shard, tensor.span, &mut output).await?;
+            bank_offset = bank_offset
+                .checked_add(tensor.span.length)
+                .context("expert bank size overflow")?;
+        }
+        let expert_length = bank_offset
+            .checked_sub(expert_offset)
+            .context("expert bank offset underflow")?;
+        ensure!(
+            expert_length == source.packed_length()?,
+            "packed expert length mismatch for layer {} expert {}",
+            source.layer,
+            source.expert
+        );
+        manifest_experts.push(ManifestExpert {
+            layer: source.layer,
+            expert: source.expert,
+            file: BANK_FILE_KEY.to_string(),
+            offset: expert_offset,
+            length: expert_length,
+        });
+    }
+
+    output.flush().await.context("flush expert bank")?;
+    output.sync_all().await.context("sync expert bank")?;
+    drop(output);
+
+    let manifest = ExpertManifest {
+        schema_version: MANIFEST_SCHEMA_VERSION,
+        model: model_id.to_string(),
+        files: HashMap::from([(
+            BANK_FILE_KEY.to_string(),
+            ManifestFile {
+                path: BANK_FILE_NAME.into(),
+                size: bank_offset,
+                sha256: None,
+            },
+        )]),
+        experts: manifest_experts,
+    };
+    manifest.validate()?;
+
+    let manifest_json = serde_json::to_vec_pretty(&manifest).context("serialize expert manifest")?;
+    tokio::fs::write(&manifest_tmp, manifest_json)
+        .await
+        .with_context(|| format!("write temporary manifest {}", manifest_tmp.display()))?;
+
+    tokio::fs::rename(&bank_tmp, &bank_path)
+        .await
+        .with_context(|| format!("publish expert bank {}", bank_path.display()))?;
+    tokio::fs::rename(&manifest_tmp, &manifest_path)
+        .await
+        .with_context(|| format!("publish expert manifest {}", manifest_path.display()))?;
+
+    Ok(PackedExpertBank {
+        bank_path,
+        manifest_path,
+        manifest,
+    })
+}
+
+async fn copy_tensor_span(
+    source_path: &Path,
+    span: TensorSpan,
+    output: &mut tokio::fs::File,
+) -> anyhow::Result<()> {
+    let mut source = tokio::fs::File::open(source_path)
+        .await
+        .with_context(|| format!("open tensor source {}", source_path.display()))?;
+    source
+        .seek(std::io::SeekFrom::Start(span.offset))
+        .await
+        .with_context(|| format!("seek tensor source {}", source_path.display()))?;
+
+    let mut remaining = span.length;
+    let mut buffer = vec![0_u8; COPY_BUFFER_BYTES];
+    while remaining > 0 {
+        let chunk = usize::try_from(remaining.min(COPY_BUFFER_BYTES as u64))
+            .context("tensor copy chunk length exceeds usize")?;
+        source
+            .read_exact(&mut buffer[..chunk])
+            .await
+            .with_context(|| format!("read tensor source {}", source_path.display()))?;
+        output
+            .write_all(&buffer[..chunk])
+            .await
+            .context("write packed expert tensor")?;
+        remaining -= chunk as u64;
+    }
+    Ok(())
 }
 
 fn validate_expert_tensor_shapes(
@@ -112,7 +253,7 @@ mod tests {
     use tempfile::tempdir;
     use tokio::io::AsyncWriteExt;
 
-    use super::discover_expert_sources;
+    use super::{discover_expert_sources, pack_expert_bank};
     use crate::{adapters::qwen3::Qwen3MoeConfig, checkpoint::SafetensorsIndex};
 
     fn config() -> Qwen3MoeConfig {
@@ -138,7 +279,9 @@ mod tests {
         let mut offset = 0_u64;
         let mut payload = Vec::new();
         for expert in 0..2 {
-            for projection in ["gate_proj", "up_proj", "down_proj"] {
+            for (projection_index, projection) in
+                ["gate_proj", "up_proj", "down_proj"].into_iter().enumerate()
+            {
                 let shape = if projection == "down_proj" {
                     if wrong_down_shape && expert == 1 {
                         [3_u64, 2_u64]
@@ -158,7 +301,8 @@ mod tests {
                     "\"{name}\":{{\"dtype\":\"F16\",\"shape\":[{},{}],\"data_offsets\":[{begin},{offset}]}}",
                     shape[0], shape[1]
                 ));
-                payload.resize(offset as usize, 0_u8);
+                let value = (expert * 3 + projection_index + 1) as u8;
+                payload.resize(offset as usize, value);
             }
         }
         let header = format!("{{{}}}", entries.join(","));
@@ -177,7 +321,10 @@ mod tests {
                 let name = format!(
                     "model.layers.0.mlp.experts.{expert}.{projection}.weight"
                 );
-                weight_map.insert(name, serde_json::Value::String("model.safetensors".to_string()));
+                weight_map.insert(
+                    name,
+                    serde_json::Value::String("model.safetensors".to_string()),
+                );
             }
         }
         let index = serde_json::json!({"weight_map": weight_map});
@@ -189,14 +336,18 @@ mod tests {
         .expect("write index");
     }
 
+    async fn inventory(root: &std::path::Path) -> crate::checkpoint::CheckpointInventory {
+        let index = SafetensorsIndex::load(&root.join("model.safetensors.index.json"))
+            .await
+            .expect("index");
+        index.inventory(root).await.expect("inventory")
+    }
+
     #[tokio::test]
     async fn discovers_complete_qwen3_expert_triplets() {
         let root = tempdir().expect("checkpoint root");
         write_fixture(root.path(), false).await;
-        let index = SafetensorsIndex::load(&root.path().join("model.safetensors.index.json"))
-            .await
-            .expect("index");
-        let inventory = index.inventory(root.path()).await.expect("inventory");
+        let inventory = inventory(root.path()).await;
 
         let experts = discover_expert_sources(&inventory, &config()).expect("expert sources");
         assert_eq!(experts.len(), 2);
@@ -206,13 +357,49 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn packs_contiguous_expert_bank_and_manifest() {
+        let root = tempdir().expect("checkpoint root");
+        let output = tempdir().expect("output root");
+        write_fixture(root.path(), false).await;
+        let inventory = inventory(root.path()).await;
+
+        let packed = pack_expert_bank(
+            &inventory,
+            &config(),
+            "Qwen/Qwen3-30B-A3B",
+            output.path(),
+        )
+        .await
+        .expect("pack expert bank");
+
+        assert_eq!(packed.manifest.experts.len(), 2);
+        assert_eq!(packed.manifest.experts[0].offset, 0);
+        assert_eq!(packed.manifest.experts[0].length, 48);
+        assert_eq!(packed.manifest.experts[1].offset, 48);
+        assert_eq!(packed.manifest.experts[1].length, 48);
+        assert_eq!(tokio::fs::metadata(&packed.bank_path).await.expect("bank metadata").len(), 96);
+
+        let bytes = tokio::fs::read(&packed.bank_path).await.expect("packed bank");
+        assert!(bytes[..16].iter().all(|byte| *byte == 1));
+        assert!(bytes[16..32].iter().all(|byte| *byte == 2));
+        assert!(bytes[32..48].iter().all(|byte| *byte == 3));
+        assert!(bytes[48..64].iter().all(|byte| *byte == 4));
+        assert!(bytes[64..80].iter().all(|byte| *byte == 5));
+        assert!(bytes[80..96].iter().all(|byte| *byte == 6));
+
+        let manifest_json = tokio::fs::read_to_string(&packed.manifest_path)
+            .await
+            .expect("manifest file");
+        let parsed = crate::manifest::ExpertManifest::from_json(&manifest_json)
+            .expect("generated manifest validates");
+        assert_eq!(parsed.files["experts"].size, 96);
+    }
+
+    #[tokio::test]
     async fn rejects_qwen3_expert_shape_mismatch() {
         let root = tempdir().expect("checkpoint root");
         write_fixture(root.path(), true).await;
-        let index = SafetensorsIndex::load(&root.path().join("model.safetensors.index.json"))
-            .await
-            .expect("index");
-        let inventory = index.inventory(root.path()).await.expect("inventory");
+        let inventory = inventory(root.path()).await;
 
         let error = discover_expert_sources(&inventory, &config())
             .expect_err("wrong expert shape must fail");
