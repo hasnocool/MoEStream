@@ -287,8 +287,14 @@ fn validate_tensor_layout(expert: &ManifestExpert) -> anyhow::Result<()> {
     let mut names = HashMap::with_capacity(expert.tensors.len());
     let mut spans = Vec::with_capacity(expert.tensors.len());
     for tensor in &expert.tensors {
-        ensure!(!tensor.name.trim().is_empty(), "tensor name cannot be empty");
-        ensure!(!tensor.dtype.trim().is_empty(), "tensor dtype cannot be empty");
+        ensure!(
+            !tensor.name.trim().is_empty(),
+            "tensor name cannot be empty"
+        );
+        ensure!(
+            !tensor.dtype.trim().is_empty(),
+            "tensor dtype cannot be empty"
+        );
         ensure!(tensor.length > 0, "tensor length must be non-zero");
         ensure!(
             names.insert(tensor.name.as_str(), ()).is_none(),
