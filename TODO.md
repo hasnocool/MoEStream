@@ -25,8 +25,8 @@
 - [x] Read and validate safetensors headers asynchronously without loading tensor payloads.
 - [x] Resolve safetensors data-relative tensor offsets into absolute source-file spans.
 - [x] Parse sharded `model.safetensors.index.json` files and inventory all checkpoint tensors.
-- [ ] Generate contiguous MoEStream expert-bank records from Qwen3 `gate_proj`, `up_proj`, and `down_proj` tensors.
-- [ ] Generate manifests automatically from supported source checkpoints.
+- [x] Generate contiguous MoEStream expert-bank records from Qwen3 `gate_proj`, `up_proj`, and `down_proj` tensors.
+- [x] Generate manifests automatically from supported Qwen3 safetensors checkpoints.
 - [ ] Verify exact PyTorch `topk` tie behavior and router output parity.
 - [ ] Implement tokenizer/chat template.
 - [ ] Implement authoritative router-weight tensor decoding and routing.

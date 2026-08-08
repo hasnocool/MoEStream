@@ -4,6 +4,28 @@ All notable changes to this project will be documented in this file.
 
 The project follows Semantic Versioning.
 
+## [0.2.0-alpha.6] - 2026-08-07
+
+### Added
+
+- Qwen3-specific checkpoint preparation that discovers every expert's `gate_proj`, `up_proj`, and `down_proj` tensor triplet.
+- Validation that expert projection dtypes match and that tensor shapes agree with Qwen3 hidden/MoE intermediate dimensions.
+- Deterministic expert-bank packing in layer-major/expert-major order with `gate_proj`, `up_proj`, then `down_proj` payload order.
+- Bounded 1 MiB asynchronous source-range copy buffers so checkpoint shards and complete expert records are never materialized in RAM.
+- Automatic expert-bank manifest generation with validated `(layer, expert)` offsets and lengths.
+- Temporary-file publication for expert-bank and manifest outputs so incomplete conversions are not exposed as final artifacts.
+- Tests covering expert discovery, shape rejection, packed byte ordering, bank offsets, bank size, and generated manifest validation.
+
+### Changed
+
+- Package version advanced to `0.2.0-alpha.6`.
+- Qwen3 checkpoint preparation now progresses from header/index inventory to actual runtime expert-bank generation.
+
+### Known limitations
+
+- Generated bank manifests do not yet embed a SHA-256 for the newly packed bank; integrity hashing can be run through the existing manifest verification path after a digest is supplied.
+- Router tensor execution, tokenizer support, expert tensor decoding, and CPU inference remain pending.
+
 ## [0.2.0-alpha.5] - 2026-08-07
 
 ### Added
