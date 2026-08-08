@@ -58,9 +58,7 @@ async fn models() -> Json<ModelsResponse> {
     })
 }
 
-async fn chat_completions(
-    Json(request): Json<ChatCompletionRequest>,
-) -> (StatusCode, Json<Value>) {
+async fn chat_completions(Json(request): Json<ChatCompletionRequest>) -> (StatusCode, Json<Value>) {
     let _ = request;
     (
         StatusCode::NOT_IMPLEMENTED,
