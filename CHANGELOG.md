@@ -4,6 +4,27 @@ All notable changes to this project will be documented in this file.
 
 The project follows Semantic Versioning.
 
+## [0.2.0-alpha.8] - 2026-08-07
+
+### Added
+
+- Verified Qwen3 expert-bank preparation wrapper that finalizes newly generated banks with SHA-256 metadata.
+- Bounded 1 MiB SHA-256 streaming with synchronous file reads and CPU hashing isolated on Tokio's blocking pool.
+- Physical packed-bank size validation against the generated manifest before publishing its digest.
+- Cleanup of stale converter temporary files before verified preparation.
+- Failure cleanup that removes temporary output and avoids leaving a published bank/manifest pair after integrity-finalization failure.
+- Tests that round-trip generated digests through `ExpertIndex::verify_declared_hashes()` and verify stale temporary-file cleanup.
+
+### Changed
+
+- Package version advanced to `0.2.0-alpha.8`.
+- Newly generated Qwen3 expert banks can now enter the existing manifest integrity-verification path immediately after preparation.
+
+### Known limitations
+
+- Projection-level `gate_proj`, `up_proj`, and `down_proj` subranges are not yet embedded in expert manifests.
+- Checkpoint preparation remains library-level; CLI progress/reporting is still pending.
+
 ## [0.2.0-alpha.7] - 2026-08-07
 
 ### Added
