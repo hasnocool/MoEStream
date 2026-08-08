@@ -27,9 +27,11 @@
 - [x] Parse sharded `model.safetensors.index.json` files and inventory all checkpoint tensors.
 - [x] Generate contiguous MoEStream expert-bank records from Qwen3 `gate_proj`, `up_proj`, and `down_proj` tensors.
 - [x] Generate manifests automatically from supported Qwen3 safetensors checkpoints.
-- [ ] Verify exact PyTorch `topk` tie behavior and router output parity.
+- [x] Load and decode Qwen3 `mlp.gate.weight` router tensors from BF16/F32 safetensors spans.
+- [x] Add non-blocking reference router matrix-vector execution using the decoded tensor.
+- [ ] Verify exact PyTorch `topk` tie behavior, router dtype/accumulation semantics, and router output parity.
+- [ ] Promote the verified router path to authoritative production routing.
 - [ ] Implement tokenizer/chat template.
-- [ ] Implement authoritative router-weight tensor decoding and routing.
 - [ ] Implement expert tensor decoding.
 - [ ] Add CPU execution provider.
 - [ ] Compare token IDs/logits against a reference runtime.
