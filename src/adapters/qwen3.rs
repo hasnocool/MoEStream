@@ -66,11 +66,11 @@ impl Qwen3MoeConfig {
             "num_experts_per_tok cannot exceed num_experts"
         );
         ensure!(
-            self.hidden_size.is_multiple_of(self.num_attention_heads),
+            divides_evenly(self.hidden_size, self.num_attention_heads),
             "hidden_size must be divisible by num_attention_heads"
         );
         ensure!(
-            self.num_attention_heads.is_multiple_of(self.num_key_value_heads),
+            divides_evenly(self.num_attention_heads, self.num_key_value_heads),
             "num_attention_heads must be divisible by num_key_value_heads"
         );
         ensure!(self.vocab_size > 0, "vocab_size must be non-zero");
@@ -84,6 +84,10 @@ impl Qwen3MoeConfig {
         );
         Ok(())
     }
+}
+
+fn divides_evenly(value: usize, divisor: usize) -> bool {
+    value.checked_rem(divisor) == Some(0)
 }
 
 #[derive(Debug, Clone, Copy, PartialEq)]
