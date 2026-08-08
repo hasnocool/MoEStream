@@ -35,7 +35,10 @@ async fn main() -> anyhow::Result<()> {
             moestream::server::serve(address).await?;
         }
         Command::Status => {
-            println!("MoEStream 0.1.0: runtime/API scaffold complete; model adapters and tensor execution pending.");
+            println!(
+                "MoEStream {}: storage-aware cache foundation complete; model adapters and tensor execution pending.",
+                env!("CARGO_PKG_VERSION")
+            );
         }
     }
 
