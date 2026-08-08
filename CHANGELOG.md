@@ -4,6 +4,27 @@ All notable changes to this project will be documented in this file.
 
 The project follows Semantic Versioning.
 
+## [0.2.0-alpha.2] - 2026-08-07
+
+### Added
+
+- Versioned expert-bank manifest schema.
+- Generic `ExpertIndex` mapping `(layer, expert)` identities to validated byte-range locations.
+- Manifest validation for safe relative source paths, declared file sizes, duplicate expert IDs, unknown file references, byte-range overflow, and out-of-bounds spans.
+- Optional declared SHA-256 metadata with strict hexadecimal-format validation.
+- Asynchronous manifest loading and source-file size verification.
+- Unit tests for index construction, duplicate rejection, path traversal rejection, out-of-range spans, and async file-size verification.
+
+### Changed
+
+- Package version advanced to `0.2.0-alpha.2`.
+- Roadmap now separates manifest/index validation from future checkpoint conversion and full SHA-256 content verification.
+
+### Known limitations
+
+- Declared SHA-256 values are validated syntactically but are not yet computed against source file contents.
+- Manifests are not yet generated automatically from upstream checkpoints.
+
 ## [0.2.0-alpha.1] - 2026-08-07
 
 ### Added
