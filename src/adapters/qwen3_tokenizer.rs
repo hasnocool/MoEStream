@@ -171,12 +171,7 @@ impl Qwen3Tokenizer {
         enable_thinking: bool,
     ) -> anyhow::Result<Vec<u32>> {
         let rendered = self
-            .render_chat(
-                messages,
-                tools,
-                add_generation_prompt,
-                enable_thinking,
-            )
+            .render_chat(messages, tools, add_generation_prompt, enable_thinking)
             .await?;
         self.encode(&rendered, false).await
     }
@@ -207,7 +202,10 @@ fn validate_config(config: &Qwen3TokenizerConfig) -> anyhow::Result<()> {
     Ok(())
 }
 
-fn resolve_token_ids(tokenizer: &Tokenizer, config: &Qwen3TokenizerConfig) -> anyhow::Result<TokenIds> {
+fn resolve_token_ids(
+    tokenizer: &Tokenizer,
+    config: &Qwen3TokenizerConfig,
+) -> anyhow::Result<TokenIds> {
     let eos = tokenizer
         .token_to_id(&config.eos_token)
         .with_context(|| format!("eos token {:?} is missing from tokenizer", config.eos_token))?;
@@ -233,7 +231,10 @@ fn validate_messages(messages: &[Value]) -> anyhow::Result<()> {
             .get("role")
             .and_then(Value::as_str)
             .with_context(|| format!("chat message {index} must contain a string role"))?;
-        ensure!(!role.is_empty(), "chat message {index} role cannot be empty");
+        ensure!(
+            !role.is_empty(),
+            "chat message {index} role cannot be empty"
+        );
     }
     Ok(())
 }
@@ -245,9 +246,7 @@ mod tests {
     use serde_json::json;
     use tempfile::tempdir;
     use tokenizers::{
-        AddedToken, Tokenizer,
-        models::wordlevel::WordLevel,
-        pre_tokenizers::whitespace::Whitespace,
+        AddedToken, Tokenizer, models::wordlevel::WordLevel, pre_tokenizers::whitespace::Whitespace,
     };
 
     use super::Qwen3Tokenizer;
@@ -316,9 +315,14 @@ mod tests {
     async fn loads_and_tokenizes_off_executor_threads() {
         let root = tempdir().expect("model root");
         write_fixture(root.path()).await;
-        let tokenizer = Qwen3Tokenizer::load(root.path()).await.expect("load tokenizer");
+        let tokenizer = Qwen3Tokenizer::load(root.path())
+            .await
+            .expect("load tokenizer");
 
-        let ids = tokenizer.encode("hello world", false).await.expect("encode");
+        let ids = tokenizer
+            .encode("hello world", false)
+            .await
+            .expect("encode");
         assert_eq!(ids, vec![1, 2]);
         assert_eq!(
             tokenizer.decode(&ids, false).await.expect("decode"),
@@ -332,7 +336,9 @@ mod tests {
     async fn renders_checkpoint_chat_template_with_thinking_control() {
         let root = tempdir().expect("model root");
         write_fixture(root.path()).await;
-        let tokenizer = Qwen3Tokenizer::load(root.path()).await.expect("load tokenizer");
+        let tokenizer = Qwen3Tokenizer::load(root.path())
+            .await
+            .expect("load tokenizer");
         let messages = vec![
             json!({"role": "system", "content": "Be concise."}),
             json!({"role": "user", "content": "hello"}),
@@ -351,7 +357,9 @@ mod tests {
     async fn rejects_invalid_message_shape_before_rendering() {
         let root = tempdir().expect("model root");
         write_fixture(root.path()).await;
-        let tokenizer = Qwen3Tokenizer::load(root.path()).await.expect("load tokenizer");
+        let tokenizer = Qwen3Tokenizer::load(root.path())
+            .await
+            .expect("load tokenizer");
         let error = tokenizer
             .render_chat(&[json!("not-an-object")], &[], true, true)
             .await
