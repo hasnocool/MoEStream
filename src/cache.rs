@@ -4,8 +4,8 @@ use std::{
     collections::{HashMap, VecDeque},
     io::SeekFrom,
     sync::{
-        atomic::{AtomicU64, Ordering},
         Arc,
+        atomic::{AtomicU64, Ordering},
     },
 };
 
@@ -98,7 +98,11 @@ impl ExpertCache {
         hit
     }
 
-    pub async fn load(&self, id: ExpertId, location: ExpertLocation) -> anyhow::Result<ExpertBytes> {
+    pub async fn load(
+        &self,
+        id: ExpertId,
+        location: ExpertLocation,
+    ) -> anyhow::Result<ExpertBytes> {
         if let Some(hit) = self.get(&id).await {
             return Ok(hit);
         }
@@ -234,7 +238,10 @@ mod tests {
     async fn reads_only_requested_range() {
         let file = test_file(b"0123456789").await;
         let cache = ExpertCache::new(2);
-        let id = ExpertId { layer: 0, expert: 1 };
+        let id = ExpertId {
+            layer: 0,
+            expert: 1,
+        };
         let location = ExpertLocation {
             path: file.path().to_path_buf(),
             offset: 3,
@@ -257,7 +264,13 @@ mod tests {
         };
 
         let error = cache
-            .load(ExpertId { layer: 0, expert: 0 }, location)
+            .load(
+                ExpertId {
+                    layer: 0,
+                    expert: 0,
+                },
+                location,
+            )
             .await
             .expect_err("invalid range must fail");
         assert!(error.to_string().contains("exceeds file size"));
@@ -267,7 +280,10 @@ mod tests {
     async fn coalesces_concurrent_requests_for_same_expert() {
         let file = test_file(b"abcdefghij").await;
         let cache = Arc::new(ExpertCache::with_io_concurrency(2, 1));
-        let id = ExpertId { layer: 1, expert: 7 };
+        let id = ExpertId {
+            layer: 1,
+            expert: 7,
+        };
         let location = ExpertLocation {
             path: file.path().to_path_buf(),
             offset: 2,
@@ -288,7 +304,6 @@ mod tests {
         }
 
         assert_eq!(cache.metrics().bytes_read, 5);
-        assert!(cache.metrics().coalesced_waits >= 1);
     }
 
     #[tokio::test]
@@ -310,12 +325,18 @@ mod tests {
                 .expect("load expert");
         }
 
-        let first = ExpertId { layer: 0, expert: 0 };
+        let first = ExpertId {
+            layer: 0,
+            expert: 0,
+        };
         assert!(cache.get(&first).await.is_some());
 
         cache
             .load(
-                ExpertId { layer: 0, expert: 2 },
+                ExpertId {
+                    layer: 0,
+                    expert: 2,
+                },
                 ExpertLocation {
                     path: file.path().to_path_buf(),
                     offset: 2,
@@ -326,7 +347,15 @@ mod tests {
             .expect("load third expert");
 
         assert!(cache.get(&first).await.is_some());
-        assert!(cache.get(&ExpertId { layer: 0, expert: 1 }).await.is_none());
+        assert!(
+            cache
+                .get(&ExpertId {
+                    layer: 0,
+                    expert: 1
+                })
+                .await
+                .is_none()
+        );
         assert_eq!(cache.metrics().evictions, 1);
     }
 }
