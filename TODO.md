@@ -21,7 +21,7 @@
 - [x] Add a deterministic softmax/top-k routing reference helper for fixtures.
 - [x] Add a versioned expert-bank manifest/index mapping `(layer, expert)` to validated byte ranges.
 - [x] Validate manifest source paths, declared file sizes, duplicate expert IDs, and range bounds.
-- [ ] Verify declared source SHA-256 hashes against file contents.
+- [x] Verify declared source SHA-256 hashes against file contents without blocking Tokio worker threads.
 - [ ] Generate manifests automatically from supported source checkpoints.
 - [ ] Verify exact PyTorch `topk` tie behavior and router output parity.
 - [ ] Implement tokenizer/chat template.

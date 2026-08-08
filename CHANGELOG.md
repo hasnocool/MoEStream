@@ -4,6 +4,25 @@ All notable changes to this project will be documented in this file.
 
 The project follows Semantic Versioning.
 
+## [0.2.0-alpha.3] - 2026-08-07
+
+### Added
+
+- Full SHA-256 verification for manifest source files that declare a digest.
+- 1 MiB streaming hash buffers so verification does not materialize model files in RAM.
+- Isolation of synchronous file reads and CPU hashing on Tokio's blocking pool so runtime worker threads remain non-blocking.
+- Corruption-detection and successful-verification unit tests using deterministic source fixtures.
+
+### Changed
+
+- Package version advanced to `0.2.0-alpha.3`.
+- Hash verification first performs asynchronous source type/size validation before starting expensive content hashing.
+
+### Known limitations
+
+- Source files without a declared SHA-256 digest are size-checked but intentionally skipped by content verification.
+- Manifests are not yet generated automatically from upstream checkpoints.
+
 ## [0.2.0-alpha.2] - 2026-08-07
 
 ### Added

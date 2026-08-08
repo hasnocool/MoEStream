@@ -40,7 +40,9 @@ The current schema validates before index construction:
 - checked offset/length arithmetic;
 - spans bounded by each source file's declared size.
 
-The resulting `ExpertIndex` resolves an `ExpertId` to the existing `ExpertLocation` structure consumed by the cache. Filesystem size checks are asynchronous. Full SHA-256 content verification and automatic checkpoint-to-manifest generation remain future work.
+The resulting `ExpertIndex` resolves an `ExpertId` to the existing `ExpertLocation` structure consumed by the cache. Filesystem type/size checks use asynchronous Tokio APIs.
+
+For sources with declared SHA-256 digests, `ExpertIndex::verify_declared_hashes()` performs full content verification. The method size-checks sources first, then isolates synchronous file reads and SHA-256 CPU work with `tokio::task::spawn_blocking`. Hashing uses a reusable 1 MiB buffer, so source files are streamed rather than loaded wholesale into RAM. Sources without a declared digest are intentionally skipped by content hashing. Automatic checkpoint-to-manifest generation remains future work.
 
 ### 4. Expert scheduler
 
@@ -94,6 +96,7 @@ Compute backends are intentionally separate from storage scheduling. Planned pro
 - Shared cache metadata must use bounded, thread-safe synchronization.
 - Physical expert reads must be limited by explicit concurrency controls.
 - Manifest and source-file filesystem checks must use asynchronous file APIs.
+- Full-file integrity hashing must run outside Tokio worker threads and use bounded-memory streaming buffers.
 - Prefetch tasks must be cancellable and bounded by semaphores/queue depth.
 - Duplicate misses for the same expert must coalesce into one in-flight physical load.
 - Authoritative cache hits may update recency metadata but must never change routing decisions.
@@ -103,6 +106,8 @@ Compute backends are intentionally separate from storage scheduling. Planned pro
 A predictor can say "expert 12 will probably be needed next." It may start reading expert 12. When the real router runs, only the router's result can select the expert. A wrong prefetch costs I/O; it must never alter model output.
 
 A manifest may say where expert 12 resides, but it must never decide that expert 12 participates in the token. Routing identity and storage location remain separate concerns.
+
+A declared integrity hash is also not advisory: when present and verification is requested, a mismatch is a hard failure before the source is trusted.
 
 ## Metrics to capture
 
