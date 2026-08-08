@@ -4,7 +4,7 @@
 
 The project is inspired by the architectural lessons of projects such as Deltafin, WASTE, llama.cpp, and other storage-aware local inference experiments, while aiming for a **model-adapter architecture rather than a single-model runtime**.
 
-> Status: **0.2.0-alpha.7 / Qwen3 adapter + router tensor bring-up.** This repository does not yet execute a production LLM.
+> Status: **0.2.0-alpha.8 / Qwen3 adapter + PyTorch router parity fixtures.** This repository does not yet execute a production LLM.
 
 ## Goal
 
@@ -111,6 +111,8 @@ The Rust runtime foundation contains:
 - temporary-file publication so partially written banks/manifests are not exposed as completed output;
 - Qwen3 `mlp.gate.weight` discovery, BF16/F32 decoding, and router tensor shape/byte validation;
 - correctness-oriented router matrix-vector execution with CPU work isolated from Tokio worker threads;
+- a recorded PyTorch BF16 CPU router fixture and Rust integration test covering logits, top-k indices, and selected weights;
+- a documented parity contract that treats tied `torch.topk` ordering as environment-specific rather than a portable model invariant;
 - an OpenAI-compatible API skeleton;
 - `/health` and `/v1/models` endpoints;
 - CI and project governance documentation.
@@ -123,7 +125,7 @@ Checkpoint discovery reads only the safetensors prefix and JSON headers. Sharded
 
 For Qwen3, the preparation layer validates expected expert tensor names, dtypes, and shapes, then copies `gate_proj`, `up_proj`, and `down_proj` in deterministic layer/expert order into one contiguous expert record. Copying uses a bounded 1 MiB buffer and async seek/read/write operations, so neither source shards nor complete expert banks are materialized in RAM. A matching runtime manifest is generated automatically.
 
-The router bring-up now reads the real `model.layers.{layer}.mlp.gate.weight` tensor, validates `[num_experts, hidden_size]`, decodes official BF16 weights, and can calculate reference logits/routes. This path remains explicitly non-authoritative until its BF16 execution semantics and exact `torch.topk` behavior are compared against the reference runtime.
+The router path reads `model.layers.{layer}.mlp.gate.weight`, validates `[num_experts, hidden_size]`, decodes official BF16 weights, and calculates reference logits/routes. A recorded PyTorch 2.10 CPU fixture now validates a non-tied BF16 example end-to-end through the actual checkpoint reader. The remaining promotion gate is a captured hidden-state fixture from the real Qwen3-30B-A3B checkpoint; see [`docs/ROUTER-PARITY.md`](docs/ROUTER-PARITY.md).
 
 ## First model target
 
@@ -149,7 +151,7 @@ curl http://127.0.0.1:8000/v1/models
 
 ## Repository roadmap
 
-See [`TODO.md`](TODO.md) and [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md).
+See [`TODO.md`](TODO.md), [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md), and [`docs/ROUTER-PARITY.md`](docs/ROUTER-PARITY.md).
 
 Kimi K3 remains a long-term extreme storage-streaming target, but it should follow correctness and performance validation on smaller sparse models.
 

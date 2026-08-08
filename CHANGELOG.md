@@ -4,6 +4,26 @@ All notable changes to this project will be documented in this file.
 
 The project follows Semantic Versioning.
 
+## [0.2.0-alpha.8] - 2026-08-07
+
+### Added
+
+- Recorded PyTorch 2.10.0 CPU BF16 router parity fixture containing BF16 weight/hidden/logit bit patterns, float32 softmax outputs, top-k indices, and selected weights before/after normalization.
+- Python fixture generator using the reference `torch.nn.functional.linear` → float32 softmax → `torch.topk` sequence.
+- Rust integration test that reconstructs the BF16 safetensors router through the real checkpoint inventory/loader and compares against the recorded PyTorch outputs.
+- Router parity documentation defining the current numerical contract and the remaining real-checkpoint promotion gate.
+
+### Changed
+
+- Package version advanced to `0.2.0-alpha.8`.
+- Router parity requirements now distinguish portable non-tied routing parity from tied `topk` ordering, which is treated as reference-environment-specific rather than a model invariant.
+
+### Known limitations
+
+- The recorded fixture is synthetic and CPU-based; at least one captured hidden state from the real Qwen3-30B-A3B checkpoint is still required before production-authoritative promotion.
+- Floating-point and tied top-k behavior may vary by PyTorch release/platform, so parity is defined with explicit fixture environments and tolerances.
+- Tokenizer support, expert tensor decoding, CPU end-to-end execution, and token/logit parity remain pending.
+
 ## [0.2.0-alpha.7] - 2026-08-07
 
 ### Added
