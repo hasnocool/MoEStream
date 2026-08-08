@@ -61,13 +61,17 @@ pub fn discover_expert_sources(
             let prefix = format!("model.layers.{layer}.mlp.experts.{expert}");
             let gate_proj = inventory
                 .tensor(&format!("{prefix}.gate_proj.weight"))
-                .with_context(|| format!("missing Qwen3 layer {layer} expert {expert} gate_proj"))?;
+                .with_context(|| {
+                    format!("missing Qwen3 layer {layer} expert {expert} gate_proj")
+                })?;
             let up_proj = inventory
                 .tensor(&format!("{prefix}.up_proj.weight"))
                 .with_context(|| format!("missing Qwen3 layer {layer} expert {expert} up_proj"))?;
             let down_proj = inventory
                 .tensor(&format!("{prefix}.down_proj.weight"))
-                .with_context(|| format!("missing Qwen3 layer {layer} expert {expert} down_proj"))?;
+                .with_context(|| {
+                    format!("missing Qwen3 layer {layer} expert {expert} down_proj")
+                })?;
 
             validate_expert_tensor_shapes(config, layer, expert, &gate_proj, &up_proj, &down_proj)?;
             experts.push(Qwen3ExpertSource {
@@ -157,7 +161,8 @@ pub async fn pack_expert_bank(
     };
     manifest.validate()?;
 
-    let manifest_json = serde_json::to_vec_pretty(&manifest).context("serialize expert manifest")?;
+    let manifest_json =
+        serde_json::to_vec_pretty(&manifest).context("serialize expert manifest")?;
     tokio::fs::write(&manifest_tmp, manifest_json)
         .await
         .with_context(|| format!("write temporary manifest {}", manifest_tmp.display()))?;
@@ -224,8 +229,14 @@ fn validate_expert_tensor_shapes(
         down_proj.metadata.dtype
     );
 
-    let gate_shape = [config.moe_intermediate_size as u64, config.hidden_size as u64];
-    let down_shape = [config.hidden_size as u64, config.moe_intermediate_size as u64];
+    let gate_shape = [
+        config.moe_intermediate_size as u64,
+        config.hidden_size as u64,
+    ];
+    let down_shape = [
+        config.hidden_size as u64,
+        config.moe_intermediate_size as u64,
+    ];
     ensure!(
         gate_proj.metadata.shape.as_slice() == gate_shape,
         "Qwen3 layer {layer} expert {expert} gate_proj shape {:?} does not match {:?}",
@@ -279,8 +290,9 @@ mod tests {
         let mut offset = 0_u64;
         let mut payload = Vec::new();
         for expert in 0..2 {
-            for (projection_index, projection) in
-                ["gate_proj", "up_proj", "down_proj"].into_iter().enumerate()
+            for (projection_index, projection) in ["gate_proj", "up_proj", "down_proj"]
+                .into_iter()
+                .enumerate()
             {
                 let shape = if projection == "down_proj" {
                     if wrong_down_shape && expert == 1 {
@@ -294,9 +306,7 @@ mod tests {
                 let bytes = shape[0] * shape[1] * 2;
                 let begin = offset;
                 offset += bytes;
-                let name = format!(
-                    "model.layers.0.mlp.experts.{expert}.{projection}.weight"
-                );
+                let name = format!("model.layers.0.mlp.experts.{expert}.{projection}.weight");
                 entries.push(format!(
                     "\"{name}\":{{\"dtype\":\"F16\",\"shape\":[{},{}],\"data_offsets\":[{begin},{offset}]}}",
                     shape[0], shape[1]
@@ -318,9 +328,7 @@ mod tests {
         let mut weight_map = serde_json::Map::new();
         for expert in 0..2 {
             for projection in ["gate_proj", "up_proj", "down_proj"] {
-                let name = format!(
-                    "model.layers.0.mlp.experts.{expert}.{projection}.weight"
-                );
+                let name = format!("model.layers.0.mlp.experts.{expert}.{projection}.weight");
                 weight_map.insert(
                     name,
                     serde_json::Value::String("model.safetensors".to_string()),
@@ -363,23 +371,26 @@ mod tests {
         write_fixture(root.path(), false).await;
         let inventory = inventory(root.path()).await;
 
-        let packed = pack_expert_bank(
-            &inventory,
-            &config(),
-            "Qwen/Qwen3-30B-A3B",
-            output.path(),
-        )
-        .await
-        .expect("pack expert bank");
+        let packed = pack_expert_bank(&inventory, &config(), "Qwen/Qwen3-30B-A3B", output.path())
+            .await
+            .expect("pack expert bank");
 
         assert_eq!(packed.manifest.experts.len(), 2);
         assert_eq!(packed.manifest.experts[0].offset, 0);
         assert_eq!(packed.manifest.experts[0].length, 48);
         assert_eq!(packed.manifest.experts[1].offset, 48);
         assert_eq!(packed.manifest.experts[1].length, 48);
-        assert_eq!(tokio::fs::metadata(&packed.bank_path).await.expect("bank metadata").len(), 96);
+        assert_eq!(
+            tokio::fs::metadata(&packed.bank_path)
+                .await
+                .expect("bank metadata")
+                .len(),
+            96
+        );
 
-        let bytes = tokio::fs::read(&packed.bank_path).await.expect("packed bank");
+        let bytes = tokio::fs::read(&packed.bank_path)
+            .await
+            .expect("packed bank");
         assert!(bytes[..16].iter().all(|byte| *byte == 1));
         assert!(bytes[16..32].iter().all(|byte| *byte == 2));
         assert!(bytes[32..48].iter().all(|byte| *byte == 3));
