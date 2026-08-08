@@ -233,7 +233,9 @@ impl ExpertIndex {
             let source_name = name.clone();
             let actual = tokio::task::spawn_blocking(move || hash_file_sha256(&path))
                 .await
-                .with_context(|| format!("join SHA-256 task for manifest file {source_name:?}"))??;
+                .with_context(|| {
+                    format!("join SHA-256 task for manifest file {source_name:?}")
+                })??;
 
             ensure!(
                 actual.eq_ignore_ascii_case(&expected),
@@ -253,7 +255,8 @@ impl ExpertIndex {
 }
 
 fn hash_file_sha256(path: &Path) -> anyhow::Result<String> {
-    let mut file = File::open(path).with_context(|| format!("open {} for SHA-256", path.display()))?;
+    let mut file =
+        File::open(path).with_context(|| format!("open {} for SHA-256", path.display()))?;
     let mut hasher = Sha256::new();
     let mut buffer = vec![0_u8; HASH_BUFFER_BYTES];
 
