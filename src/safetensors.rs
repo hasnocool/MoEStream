@@ -71,7 +71,8 @@ impl SafetensorsHeader {
             "safetensors header extends past end of file"
         );
 
-        let header_len_usize = usize::try_from(header_len).context("header length exceeds usize")?;
+        let header_len_usize =
+            usize::try_from(header_len).context("header length exceeds usize")?;
         let mut header_bytes = vec![0_u8; header_len_usize];
         file.read_exact(&mut header_bytes)
             .await
@@ -90,7 +91,8 @@ impl SafetensorsHeader {
         data_start: u64,
         file_size: u64,
     ) -> anyhow::Result<Self> {
-        let root: Value = serde_json::from_slice(header_bytes).context("parse safetensors header JSON")?;
+        let root: Value =
+            serde_json::from_slice(header_bytes).context("parse safetensors header JSON")?;
         let object = root
             .as_object()
             .context("safetensors header root must be a JSON object")?;
@@ -113,7 +115,10 @@ impl SafetensorsHeader {
             tensors.insert(name.clone(), tensor);
         }
 
-        ensure!(!tensors.is_empty(), "safetensors header contains no tensors");
+        ensure!(
+            !tensors.is_empty(),
+            "safetensors header contains no tensors"
+        );
 
         let data_len = file_size
             .checked_sub(data_start)
@@ -184,7 +189,13 @@ fn validate_data_layout(
 ) -> anyhow::Result<()> {
     let mut spans = tensors
         .iter()
-        .map(|(name, tensor)| (name.as_str(), tensor.data_offsets[0], tensor.data_offsets[1]))
+        .map(|(name, tensor)| {
+            (
+                name.as_str(),
+                tensor.data_offsets[0],
+                tensor.data_offsets[1],
+            )
+        })
         .collect::<Vec<_>>();
     spans.sort_unstable_by(|left, right| {
         left.1
@@ -262,8 +273,7 @@ mod tests {
 
     #[tokio::test]
     async fn rejects_tensor_range_past_file_data() {
-        let header_json =
-            r#"{"a":{"dtype":"F32","shape":[2],"data_offsets":[0,8]}}"#;
+        let header_json = r#"{"a":{"dtype":"F32","shape":[2],"data_offsets":[0,8]}}"#;
         let file = write_fixture(header_json, &[0_u8; 4]).await;
 
         let error = SafetensorsHeader::load(file.path())
@@ -285,8 +295,7 @@ mod tests {
 
     #[tokio::test]
     async fn rejects_unindexed_trailing_bytes() {
-        let header_json =
-            r#"{"a":{"dtype":"F32","shape":[1],"data_offsets":[0,4]}}"#;
+        let header_json = r#"{"a":{"dtype":"F32","shape":[1],"data_offsets":[0,4]}}"#;
         let file = write_fixture(header_json, &[0_u8; 8]).await;
 
         let error = SafetensorsHeader::load(file.path())
