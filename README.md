@@ -4,7 +4,7 @@
 
 The project is inspired by the architectural lessons of projects such as Deltafin, WASTE, llama.cpp, and other storage-aware local inference experiments, while aiming for a **model-adapter architecture rather than a single-model runtime**.
 
-> Status: **0.2.0-alpha.2 / Qwen3 adapter + validated expert-bank indexing.** This repository does not yet execute a production LLM.
+> Status: **0.2.0-alpha.3 / Qwen3 adapter + verified expert-bank sources.** This repository does not yet execute a production LLM.
 
 ## Goal
 
@@ -101,13 +101,14 @@ The Rust runtime foundation contains:
 - a correctness-oriented Qwen3 softmax/top-k routing fixture helper;
 - a versioned expert-bank manifest/index that maps `(layer, expert)` IDs to validated source-file byte ranges;
 - safe relative-path checks, duplicate-ID/range validation, and asynchronous declared-size verification for expert-bank files;
+- SHA-256 content verification for sources that declare hashes, with synchronous disk reads and CPU hashing isolated on Tokio's blocking pool;
 - an OpenAI-compatible API skeleton;
 - `/health` and `/v1/models` endpoints;
 - CI and project governance documentation.
 
 The current cache deliberately uses ordinary asynchronous file seek/read operations. Direct I/O, io_uring-specific paths, mmap experiments, prefetch cancellation, and accelerator residency should only be added when benchmarks demonstrate that they improve the intended hardware targets.
 
-The expert manifest can carry declared SHA-256 values and validates their format, but content hashing is not yet implemented. Manifests are also not yet generated automatically from upstream checkpoints.
+Expert-bank integrity verification streams source files through a 1 MiB hashing buffer, so full model files are never materialized in RAM. Sources without declared hashes remain size-validated but are skipped by content verification. Manifests are not yet generated automatically from upstream checkpoints.
 
 The Qwen3 routing helper operates on already-computed router logits. It is not yet the authoritative tensor-level router; router weight decoding, exact reference parity, tokenizer support, and expert execution remain part of the 0.2 milestone.
 
