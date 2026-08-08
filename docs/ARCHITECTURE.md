@@ -2,7 +2,7 @@
 
 ## Objective
 
-MoEStream separates **model semantics** from **storage/runtime policy** so multiple sparse model families can share expert indexing, caching, prefetch, metrics, and API infrastructure.
+MoEStream separates **model semantics** from **storage/runtime policy** so multiple sparse model families can share checkpoint discovery, expert indexing, caching, prefetch, metrics, and API infrastructure.
 
 ## Layers
 
@@ -24,7 +24,24 @@ A model adapter is authoritative for:
 
 Storage hints are advisory only. The adapter's authoritative route must decide which experts participate.
 
-### 3. Expert manifest and index
+### 3. Checkpoint discovery and preparation
+
+MoEStream must inspect large upstream checkpoints without materializing tensor payloads just to discover their layout.
+
+The safetensors metadata reader therefore:
+
+- reads the 8-byte little-endian JSON-header length asynchronously;
+- caps accepted header size before allocation;
+- reads only the JSON header, never tensor payload bytes;
+- records dtype, shape, and data-relative `[begin, end)` offsets;
+- converts data-relative offsets into checked absolute source-file spans;
+- rejects malformed JSON, reversed ranges, out-of-bounds tensors, holes, and trailing unindexed data.
+
+For Qwen3, one logical expert is represented upstream by separate `gate_proj`, `up_proj`, and `down_proj` tensors. The first checkpoint converter will repack those three spans into one contiguous MoEStream expert record. That keeps checkpoint conversion out of the token-generation hot path and preserves one logical expert read for the cache/scheduler.
+
+Sharded `model.safetensors.index.json` parsing and the contiguous expert-record writer are the next checkpoint-preparation steps.
+
+### 4. Expert manifest and index
 
 The manifest is the trust boundary between model conversion and runtime expert loading. It maps logical `(layer, expert)` identities onto explicit byte ranges in declared source files.
 
@@ -42,9 +59,9 @@ The current schema validates before index construction:
 
 The resulting `ExpertIndex` resolves an `ExpertId` to the existing `ExpertLocation` structure consumed by the cache. Filesystem type/size checks use asynchronous Tokio APIs.
 
-For sources with declared SHA-256 digests, `ExpertIndex::verify_declared_hashes()` performs full content verification. The method size-checks sources first, then isolates synchronous file reads and SHA-256 CPU work with `tokio::task::spawn_blocking`. Hashing uses a reusable 1 MiB buffer, so source files are streamed rather than loaded wholesale into RAM. Sources without a declared digest are intentionally skipped by content hashing. Automatic checkpoint-to-manifest generation remains future work.
+For sources with declared SHA-256 digests, `ExpertIndex::verify_declared_hashes()` performs full content verification. The method size-checks sources first, then isolates synchronous file reads and SHA-256 CPU work with `tokio::task::spawn_blocking`. Hashing uses a reusable 1 MiB buffer, so source files are streamed rather than loaded wholesale into RAM. Sources without a declared digest are intentionally skipped by content hashing.
 
-### 4. Expert scheduler
+### 5. Expert scheduler
 
 The scheduler will combine:
 
@@ -58,7 +75,7 @@ The scheduler will combine:
 
 Authoritative expert loads already use bounded I/O concurrency. Predictive prefetch cancellation remains a separate scheduling milestone so speculative reads cannot accidentally affect correctness.
 
-### 5. Tiered cache
+### 6. Tiered cache
 
 ```text
 L0  accelerator memory    fastest / smallest
@@ -80,7 +97,7 @@ The current host cache implements:
 
 These primitives establish the baseline for later direct-I/O, io_uring, mmap, and accelerator-residency experiments. Alternative storage paths should be benchmarked against this baseline before adoption.
 
-### 6. Execution provider
+### 7. Execution provider
 
 Compute backends are intentionally separate from storage scheduling. Planned providers:
 
@@ -92,6 +109,7 @@ Compute backends are intentionally separate from storage scheduling. Planned pro
 ## Concurrency rules
 
 - Async request paths must not perform blocking disk or network operations.
+- Checkpoint metadata discovery must use asynchronous file I/O and must not read tensor payloads unnecessarily.
 - CPU-bound tensor work that cannot be asynchronous must execute in a dedicated compute pool/provider, not on Tokio worker threads.
 - Shared cache metadata must use bounded, thread-safe synchronization.
 - Physical expert reads must be limited by explicit concurrency controls.
@@ -108,6 +126,8 @@ A predictor can say "expert 12 will probably be needed next." It may start readi
 A manifest may say where expert 12 resides, but it must never decide that expert 12 participates in the token. Routing identity and storage location remain separate concerns.
 
 A declared integrity hash is also not advisory: when present and verification is requested, a mismatch is a hard failure before the source is trusted.
+
+Checkpoint conversion may rearrange tensor bytes into a storage-optimized expert record, but it must preserve the original tensor dtype, shape, element order, and bytes exactly unless an explicitly separate quantization/conversion mode is requested later.
 
 ## Metrics to capture
 
